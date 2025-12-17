@@ -2,7 +2,9 @@
 
 > Procedural WebGPU Shader Studio - HAL 9000 inspired glowing orb with real-time controls
 
-<video src="https://github.com/mrsarac/lithosphere/raw/main/videos/lithosphere5.mp4" controls autoplay loop muted width="100%"></video>
+[![Lithosphere Demo](https://lithosphere.mustafasarac.com/og-image.png)](https://github.com/mrsarac/lithosphere/raw/main/videos/lithosphere5.mp4)
+
+> *Click image to watch demo video*
 
 ## Features
 
