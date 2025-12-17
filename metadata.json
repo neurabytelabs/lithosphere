@@ -1,0 +1,5 @@
+{
+  "name": "Procedural WebGPU Rock Shader",
+  "description": "A cinematic, high-performance procedural rock generator using React, Three.js, and WebGPURenderer with TSL (Three Shading Language). Features real-time fractal noise displacement and dynamic lighting.",
+  "requestFramePermissions": []
+}

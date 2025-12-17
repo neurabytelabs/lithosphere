@@ -1,0 +1,53 @@
+/* Base styles - Tailwind is loaded via CDN */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background-color: #050505;
+  font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Monaco, Consolas, monospace;
+}
+
+#root {
+  width: 100%;
+  height: 100%;
+}
+
+canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* Loading animation enhancement */
+@keyframes pulse-glow {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 1.5s ease-in-out infinite;
+}
+
+/* Subtle scanline effect for cyberpunk feel */
+.scanlines::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0, 0, 0, 0.03) 2px,
+    rgba(0, 0, 0, 0.03) 4px
+  );
+}
