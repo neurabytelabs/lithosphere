@@ -20,6 +20,9 @@ const {
   normalWorld,
   cameraPosition,
   vec3,
+  vec4,
+  vec2,
+  uv,
   uniform,
   float,
   mx_noise_float,
@@ -32,6 +35,11 @@ const {
   max,
   sin,
   cos,
+  sub,
+  mul,
+  length,
+  smoothstep,
+  Fn,
 } = TSL;
 
 // ============================================
@@ -59,6 +67,7 @@ interface SceneRefs {
   postProcessing: any;
   bloomPass: any;
   rgbShiftPass: any;
+  vignettePass: any;
   uniforms: {
     uTime: any;
     uPulseSpeed: any;
@@ -112,6 +121,7 @@ const RockScene: React.FC = () => {
     postProcessing: null,
     bloomPass: null,
     rgbShiftPass: null,
+    vignettePass: null,
     uniforms: null,
     animationConfig: {
       meshRotationSpeed: DEFAULT_CONFIG.animation.meshRotationSpeed,
@@ -162,6 +172,11 @@ const RockScene: React.FC = () => {
     if (refs.rgbShiftPass) {
       refs.rgbShiftPass.amount.value = newConfig.postProcess.chromaticAberrationEnabled
         ? newConfig.postProcess.chromaticAberrationAmount
+        : 0;
+    }
+    if (refs.vignettePass) {
+      refs.vignettePass.intensity.value = newConfig.postProcess.vignetteEnabled
+        ? newConfig.postProcess.vignetteIntensity
         : 0;
     }
 
@@ -673,8 +688,23 @@ const RockScene: React.FC = () => {
         const bloomedScene = scenePassColor.add(bloomPassNode);
         rgbShiftNode = rgbShift(bloomedScene, rgbShiftAmount);
 
+        // Create vignette effect (custom TSL implementation)
+        const vignetteIntensity = uniform(config.postProcess.vignetteEnabled
+          ? config.postProcess.vignetteIntensity
+          : 0);
+
+        // Vignette: darken edges based on distance from center
+        // Uses uv coordinates (0-1), center is at 0.5, 0.5
+        const vignetteNode = Fn(() => {
+          const screenUV = uv();
+          const centeredUV = screenUV.sub(vec2(0.5, 0.5));
+          const dist = length(centeredUV).mul(1.4142); // sqrt(2) to normalize diagonal
+          const vignette = float(1.0).sub(smoothstep(float(0.5), float(1.5), dist).mul(vignetteIntensity));
+          return rgbShiftNode.mul(vec4(vignette, vignette, vignette, 1.0));
+        })();
+
         // Set final output node
-        postProcessing.outputNode = rgbShiftNode;
+        postProcessing.outputNode = vignetteNode;
 
         // Store refs for runtime updates
         sceneRefs.current.postProcessing = postProcessing;
@@ -686,8 +716,11 @@ const RockScene: React.FC = () => {
         sceneRefs.current.rgbShiftPass = {
           amount: rgbShiftAmount,
         };
+        sceneRefs.current.vignettePass = {
+          intensity: vignetteIntensity,
+        };
 
-        console.log('[PostProcessing] Pipeline initialized with bloom and chromatic aberration');
+        console.log('[PostProcessing] Pipeline initialized with bloom, chromatic aberration, and vignette');
       } catch (e) {
         console.warn('[PostProcessing] Failed to initialize, falling back to direct render:', e);
         postProcessing = null;
