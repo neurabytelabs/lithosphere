@@ -241,7 +241,7 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 [![Website](https://img.shields.io/badge/Website-mustafasarac.com-000?style=flat-square)](https://mustafasarac.com)
 [![GitHub](https://img.shields.io/badge/GitHub-mrsarac-181717?style=flat-square&logo=github)](https://github.com/mrsarac)
-[![Twitter](https://img.shields.io/badge/Twitter-@mikibox-1DA1F2?style=flat-square&logo=twitter)](https://twitter.com/mikibox)
+[![Twitter](https://img.shields.io/badge/Twitter-@theRenaisseur-1DA1F2?style=flat-square&logo=twitter)](https://twitter.com/theRenaisseur)
 
 </div>
 
