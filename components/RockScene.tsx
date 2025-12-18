@@ -1,7 +1,13 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import * as THREE from 'three';
 // @ts-ignore
-import { WebGPURenderer, MeshPhysicalNodeMaterial, TSL } from 'three/webgpu';
+import { WebGPURenderer, MeshPhysicalNodeMaterial, TSL, PostProcessing } from 'three/webgpu';
+// @ts-ignore
+import { pass } from 'three/tsl';
+// @ts-ignore
+import { bloom } from 'three/addons/tsl/display/BloomNode.js';
+// @ts-ignore
+import { rgbShift } from 'three/addons/tsl/display/RGBShiftNode.js';
 // @ts-ignore
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import DebugPanel, { ShaderConfig, DEFAULT_CONFIG } from './DebugPanel';
@@ -47,6 +53,10 @@ interface SceneRefs {
   scene: THREE.Scene | null;
   camera: THREE.PerspectiveCamera | null;
   renderer: any;
+  // Post-processing
+  postProcessing: any;
+  bloomPass: any;
+  rgbShiftPass: any;
   uniforms: {
     uTime: any;
     uPulseSpeed: any;
@@ -95,6 +105,10 @@ const RockScene: React.FC = () => {
     scene: null,
     camera: null,
     renderer: null,
+    // Post-processing
+    postProcessing: null,
+    bloomPass: null,
+    rgbShiftPass: null,
     uniforms: null,
     animationConfig: {
       meshRotationSpeed: DEFAULT_CONFIG.animation.meshRotationSpeed,
@@ -123,7 +137,7 @@ const RockScene: React.FC = () => {
       refs.controls.dampingFactor = newConfig.camera.dampingFactor;
     }
 
-    // Update renderer (post-processing)
+    // Update renderer (tone mapping)
     if (refs.renderer) {
       refs.renderer.toneMappingExposure = newConfig.postProcess.exposure;
       // Tone mapping type mapping
@@ -134,6 +148,18 @@ const RockScene: React.FC = () => {
         'cineon': THREE.CineonToneMapping,
       };
       refs.renderer.toneMapping = toneMappingMap[newConfig.postProcess.toneMapping] || THREE.ACESFilmicToneMapping;
+    }
+
+    // Update post-processing effects
+    if (refs.bloomPass) {
+      refs.bloomPass.strength.value = newConfig.postProcess.bloomEnabled ? newConfig.postProcess.bloomIntensity : 0;
+      refs.bloomPass.radius.value = newConfig.postProcess.bloomRadius;
+      refs.bloomPass.threshold.value = newConfig.postProcess.bloomThreshold;
+    }
+    if (refs.rgbShiftPass) {
+      refs.rgbShiftPass.amount.value = newConfig.postProcess.chromaticAberrationEnabled
+        ? newConfig.postProcess.chromaticAberrationAmount
+        : 0;
     }
 
     // Update lighting positions
@@ -537,6 +563,58 @@ const RockScene: React.FC = () => {
       sceneRefs.current.ambientLight = ambientLight;
 
       // ============================================
+      // === POST-PROCESSING PIPELINE ===
+      // ============================================
+
+      let postProcessing: any = null;
+      let bloomPassNode: any = null;
+      let rgbShiftNode: any = null;
+
+      try {
+        // Create PostProcessing instance
+        postProcessing = new PostProcessing(renderer);
+
+        // Create scene pass
+        const scenePass = pass(scene, camera);
+        const scenePassColor = scenePass.getTextureNode('output');
+
+        // Create bloom effect with initial values from config
+        const bloomStrength = uniform(config.postProcess.bloomEnabled ? config.postProcess.bloomIntensity : 0);
+        const bloomRadius = uniform(config.postProcess.bloomRadius);
+        const bloomThreshold = uniform(config.postProcess.bloomThreshold);
+
+        bloomPassNode = bloom(scenePassColor, bloomStrength, bloomThreshold, bloomRadius);
+
+        // Create chromatic aberration (RGB shift) effect
+        const rgbShiftAmount = uniform(config.postProcess.chromaticAberrationEnabled
+          ? config.postProcess.chromaticAberrationAmount
+          : 0);
+
+        // Chain effects: scene + bloom, then apply rgbShift
+        const bloomedScene = scenePassColor.add(bloomPassNode);
+        rgbShiftNode = rgbShift(bloomedScene, rgbShiftAmount);
+
+        // Set final output node
+        postProcessing.outputNode = rgbShiftNode;
+
+        // Store refs for runtime updates
+        sceneRefs.current.postProcessing = postProcessing;
+        sceneRefs.current.bloomPass = {
+          strength: bloomStrength,
+          radius: bloomRadius,
+          threshold: bloomThreshold,
+        };
+        sceneRefs.current.rgbShiftPass = {
+          amount: rgbShiftAmount,
+        };
+
+        console.log('[PostProcessing] Pipeline initialized with bloom and chromatic aberration');
+      } catch (e) {
+        console.warn('[PostProcessing] Failed to initialize, falling back to direct render:', e);
+        postProcessing = null;
+      }
+
+      // ============================================
       // === ANIMATION LOOP ===
       // ============================================
 
@@ -630,7 +708,12 @@ const RockScene: React.FC = () => {
         const redShift = Math.sin(elapsed * 0.4) * 0.05;
         halBackLight.color.setRGB(1.0, 0.1 + redShift, 0);
 
-        renderer.render(scene, camera);
+        // Use post-processing if available, otherwise direct render
+        if (postProcessing) {
+          postProcessing.render();
+        } else {
+          renderer.render(scene, camera);
+        }
       };
 
       const handleResize = () => {

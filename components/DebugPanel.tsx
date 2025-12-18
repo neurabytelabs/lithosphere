@@ -86,9 +86,17 @@ export interface CameraConfig {
 export interface PostProcessConfig {
   exposure: number;
   toneMapping: 'aces' | 'reinhard' | 'linear' | 'cineon';
+  // Bloom
   bloomEnabled: boolean;
   bloomIntensity: number;
   bloomThreshold: number;
+  bloomRadius: number;
+  // Chromatic Aberration
+  chromaticAberrationEnabled: boolean;
+  chromaticAberrationAmount: number;
+  // Vignette
+  vignetteEnabled: boolean;
+  vignetteIntensity: number;
 }
 
 export interface ShaderConfig {
@@ -178,9 +186,17 @@ export const DEFAULT_CONFIG: ShaderConfig = {
   postProcess: {
     exposure: 1.3,
     toneMapping: 'aces',
-    bloomEnabled: false,
-    bloomIntensity: 0.5,
-    bloomThreshold: 0.8,
+    // Bloom
+    bloomEnabled: true,
+    bloomIntensity: 1.0,
+    bloomThreshold: 0.2,
+    bloomRadius: 0.4,
+    // Chromatic Aberration
+    chromaticAberrationEnabled: false,
+    chromaticAberrationAmount: 0.002,
+    // Vignette
+    vignetteEnabled: false,
+    vignetteIntensity: 0.5,
   },
 };
 
@@ -883,7 +899,7 @@ interface DebugPanelProps {
 
 const DebugPanel: React.FC<DebugPanelProps> = ({ config, onConfigChange }) => {
   const [isOpen, setIsOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<'core' | 'gel' | 'lighting' | 'animation' | 'shape' | 'camera' | 'presets' | 'ai' | 'info'>('core');
+  const [activeTab, setActiveTab] = useState<'core' | 'gel' | 'lighting' | 'animation' | 'shape' | 'camera' | 'effects' | 'presets' | 'ai' | 'info'>('core');
   const [geminiApiKey, setGeminiApiKey] = useState(() => {
     if (typeof window !== 'undefined') {
       return localStorage.getItem('gemini-api-key') || '';
@@ -940,6 +956,10 @@ const DebugPanel: React.FC<DebugPanelProps> = ({ config, onConfigChange }) => {
 
   const updateCamera = useCallback((updates: Partial<CameraConfig>) => {
     onConfigChange({ ...config, camera: { ...config.camera, ...updates } });
+  }, [config, onConfigChange]);
+
+  const updatePostProcess = useCallback((updates: Partial<PostProcessConfig>) => {
+    onConfigChange({ ...config, postProcess: { ...config.postProcess, ...updates } });
   }, [config, onConfigChange]);
 
   const applyPreset = useCallback((presetName: string) => {
@@ -1012,9 +1032,10 @@ const DebugPanel: React.FC<DebugPanelProps> = ({ config, onConfigChange }) => {
     { id: 'animation', label: 'Anim', icon: '🎬', shortcut: '4' },
     { id: 'shape', label: 'Shape', icon: '🔷', shortcut: '5' },
     { id: 'camera', label: 'Camera', icon: '📷', shortcut: '6' },
-    { id: 'presets', label: 'Presets', icon: '📦', shortcut: '7' },
-    { id: 'ai', label: 'AI', icon: '🤖', shortcut: '8' },
-    { id: 'info', label: 'Info', icon: 'ℹ️', shortcut: '9' },
+    { id: 'effects', label: 'Effects', icon: '✨', shortcut: '7' },
+    { id: 'presets', label: 'Presets', icon: '📦', shortcut: '8' },
+    { id: 'ai', label: 'AI', icon: '🤖', shortcut: '9' },
+    { id: 'info', label: 'Info', icon: 'ℹ️', shortcut: '0' },
   ] as const;
 
   return (
@@ -1299,6 +1320,94 @@ const DebugPanel: React.FC<DebugPanelProps> = ({ config, onConfigChange }) => {
 
                 <Section title="Controls" icon="🎮" defaultOpen>
                   <Slider label="Damping" value={config.camera.dampingFactor} min={0.01} max={0.2} step={0.01} onChange={(v) => updateCamera({ dampingFactor: v })} tooltip="Camera movement smoothness" />
+                </Section>
+              </div>
+            )}
+
+            {/* Effects Tab */}
+            {activeTab === 'effects' && (
+              <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                <Section title="Tone Mapping" icon="🎞️" defaultOpen>
+                  <Select
+                    label="Type"
+                    value={config.postProcess.toneMapping}
+                    options={[
+                      { value: 'aces', label: 'ACES Filmic' },
+                      { value: 'reinhard', label: 'Reinhard' },
+                      { value: 'linear', label: 'Linear' },
+                      { value: 'cineon', label: 'Cineon' },
+                    ]}
+                    onChange={(v) => updatePostProcess({ toneMapping: v as PostProcessConfig['toneMapping'] })}
+                  />
+                  <Slider
+                    label="Exposure"
+                    value={config.postProcess.exposure}
+                    min={0.1} max={3} step={0.05}
+                    onChange={(v) => updatePostProcess({ exposure: v })}
+                    tooltip="Overall brightness"
+                  />
+                </Section>
+
+                <Section title="Bloom" icon="🌟" defaultOpen badge="WebGPU">
+                  <Toggle
+                    label="Enabled"
+                    value={config.postProcess.bloomEnabled}
+                    onChange={(v) => updatePostProcess({ bloomEnabled: v })}
+                    tooltip="Enable bloom glow effect"
+                  />
+                  <Slider
+                    label="Intensity"
+                    value={config.postProcess.bloomIntensity}
+                    min={0} max={3} step={0.05}
+                    onChange={(v) => updatePostProcess({ bloomIntensity: v })}
+                    tooltip="Bloom glow strength"
+                  />
+                  <Slider
+                    label="Threshold"
+                    value={config.postProcess.bloomThreshold}
+                    min={0} max={1} step={0.01}
+                    onChange={(v) => updatePostProcess({ bloomThreshold: v })}
+                    tooltip="Brightness threshold for bloom"
+                  />
+                  <Slider
+                    label="Radius"
+                    value={config.postProcess.bloomRadius}
+                    min={0} max={1} step={0.01}
+                    onChange={(v) => updatePostProcess({ bloomRadius: v })}
+                    tooltip="Bloom spread radius"
+                  />
+                </Section>
+
+                <Section title="Chromatic Aberration" icon="🌈" defaultOpen badge="WebGPU">
+                  <Toggle
+                    label="Enabled"
+                    value={config.postProcess.chromaticAberrationEnabled}
+                    onChange={(v) => updatePostProcess({ chromaticAberrationEnabled: v })}
+                    tooltip="Enable RGB color separation effect"
+                  />
+                  <Slider
+                    label="Amount"
+                    value={config.postProcess.chromaticAberrationAmount}
+                    min={0} max={0.02} step={0.0005}
+                    onChange={(v) => updatePostProcess({ chromaticAberrationAmount: v })}
+                    tooltip="Color separation strength"
+                  />
+                </Section>
+
+                <Section title="Vignette" icon="🔲" defaultOpen badge="Soon">
+                  <Toggle
+                    label="Enabled"
+                    value={config.postProcess.vignetteEnabled}
+                    onChange={(v) => updatePostProcess({ vignetteEnabled: v })}
+                    tooltip="Enable edge darkening effect (Coming Soon)"
+                  />
+                  <Slider
+                    label="Intensity"
+                    value={config.postProcess.vignetteIntensity}
+                    min={0} max={1} step={0.01}
+                    onChange={(v) => updatePostProcess({ vignetteIntensity: v })}
+                    tooltip="Vignette darkness strength"
+                  />
                 </Section>
               </div>
             )}
