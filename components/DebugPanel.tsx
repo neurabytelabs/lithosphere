@@ -75,6 +75,15 @@ export interface ShapeConfig {
   wireframe: boolean;
 }
 
+// Mesh source for custom GLTF imports
+export interface MeshSource {
+  type: 'builtin' | 'gltf';
+  builtinType?: ShapeConfig['type'];
+  gltfUrl?: string;
+  gltfName?: string;
+  scale?: number;
+}
+
 export interface CameraConfig {
   fov: number;
   distance: number;
@@ -107,6 +116,7 @@ export interface ShaderConfig {
   shape: ShapeConfig;
   camera: CameraConfig;
   postProcess: PostProcessConfig;
+  meshSource: MeshSource;
 }
 
 export const DEFAULT_CONFIG: ShaderConfig = {
@@ -198,6 +208,11 @@ export const DEFAULT_CONFIG: ShaderConfig = {
     vignetteEnabled: false,
     vignetteIntensity: 0.5,
   },
+  meshSource: {
+    type: 'builtin',
+    builtinType: 'icosahedron',
+    scale: 1.0,
+  },
 };
 
 // ============================================
@@ -222,6 +237,7 @@ export const PRESETS: Record<string, ShaderConfig> = {
       halCoreLightColor: [1.0, 0.0, 0.0],
       halCoreLightIntensity: 5.0,
     },
+    meshSource: { ...DEFAULT_CONFIG.meshSource },
   },
   'Blue Crystal': {
     ...DEFAULT_CONFIG,
@@ -895,11 +911,14 @@ User request: ${prompt}`;
 interface DebugPanelProps {
   config: ShaderConfig;
   onConfigChange: (config: ShaderConfig) => void;
+  onMeshImport?: (file: File) => void;
 }
 
-const DebugPanel: React.FC<DebugPanelProps> = ({ config, onConfigChange }) => {
+const DebugPanel: React.FC<DebugPanelProps> = ({ config, onConfigChange, onMeshImport }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'core' | 'gel' | 'lighting' | 'animation' | 'shape' | 'camera' | 'effects' | 'presets' | 'ai' | 'info'>('core');
+  const [meshLoading, setMeshLoading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [geminiApiKey, setGeminiApiKey] = useState(() => {
     if (typeof window !== 'undefined') {
       return localStorage.getItem('gemini-api-key') || '';
@@ -961,6 +980,33 @@ const DebugPanel: React.FC<DebugPanelProps> = ({ config, onConfigChange }) => {
   const updatePostProcess = useCallback((updates: Partial<PostProcessConfig>) => {
     onConfigChange({ ...config, postProcess: { ...config.postProcess, ...updates } });
   }, [config, onConfigChange]);
+
+  const updateMeshSource = useCallback((updates: Partial<MeshSource>) => {
+    onConfigChange({ ...config, meshSource: { ...config.meshSource, ...updates } });
+  }, [config, onConfigChange]);
+
+  const handleMeshFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file && onMeshImport) {
+      setMeshLoading(true);
+      onMeshImport(file);
+      updateMeshSource({
+        type: 'gltf',
+        gltfName: file.name,
+        gltfUrl: URL.createObjectURL(file),
+      });
+      setTimeout(() => setMeshLoading(false), 1500);
+    }
+  }, [onMeshImport, updateMeshSource]);
+
+  const resetToBuiltinMesh = useCallback(() => {
+    updateMeshSource({
+      type: 'builtin',
+      builtinType: config.shape.type,
+      gltfUrl: undefined,
+      gltfName: undefined,
+    });
+  }, [updateMeshSource, config.shape.type]);
 
   const applyPreset = useCallback((presetName: string) => {
     const preset = PRESETS[presetName];
@@ -1281,7 +1327,7 @@ const DebugPanel: React.FC<DebugPanelProps> = ({ config, onConfigChange }) => {
 
             {/* Shape Tab */}
             {activeTab === 'shape' && (
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4">
                 <Section title="Geometry Type" icon="🔷" defaultOpen>
                   <Select
                     label="Shape"
@@ -1294,7 +1340,68 @@ const DebugPanel: React.FC<DebugPanelProps> = ({ config, onConfigChange }) => {
                       { value: 'torus', label: 'Torus (donut)' },
                       { value: 'torusKnot', label: 'Torus Knot (complex)' },
                     ]}
-                    onChange={(v) => updateShape({ type: v as ShapeConfig['type'] })}
+                    onChange={(v) => {
+                      updateShape({ type: v as ShapeConfig['type'] });
+                      if (config.meshSource.type === 'builtin') {
+                        updateMeshSource({ builtinType: v as ShapeConfig['type'] });
+                      }
+                    }}
+                  />
+                </Section>
+
+                <Section title="Import GLTF" icon="📁" defaultOpen badge="New">
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".gltf,.glb"
+                    onChange={handleMeshFileSelect}
+                    className="hidden"
+                  />
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={meshLoading}
+                    className="w-full py-2 px-3 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 hover:border-amber-500/50 rounded text-[11px] text-zinc-300 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {meshLoading ? (
+                      <span className="flex items-center justify-center gap-2">
+                        <span className="w-3 h-3 border border-amber-500 border-t-transparent rounded-full animate-spin" />
+                        Loading...
+                      </span>
+                    ) : (
+                      <span className="flex items-center justify-center gap-2">
+                        <span>📥</span>
+                        Upload GLTF/GLB
+                      </span>
+                    )}
+                  </button>
+                  {config.meshSource.type === 'gltf' && config.meshSource.gltfName && (
+                    <div className="mt-2 p-2 bg-zinc-800/50 rounded border border-amber-500/30">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] text-amber-400 truncate flex-1">
+                          📦 {config.meshSource.gltfName}
+                        </span>
+                        <button
+                          onClick={resetToBuiltinMesh}
+                          className="text-[9px] text-zinc-500 hover:text-red-400 ml-2"
+                          title="Remove custom mesh"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                  <p className="text-[9px] text-zinc-500 mt-2">
+                    Upload .gltf or .glb files. The first mesh will be used with the TSL shader.
+                  </p>
+                </Section>
+
+                <Section title="Mesh Scale" icon="📐" defaultOpen>
+                  <Slider
+                    label="Scale"
+                    value={config.meshSource.scale || 1.0}
+                    min={0.1} max={5} step={0.1}
+                    onChange={(v) => updateMeshSource({ scale: v })}
+                    tooltip="Uniform mesh scale"
                   />
                 </Section>
 

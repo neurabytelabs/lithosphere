@@ -10,7 +10,9 @@ import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { rgbShift } from 'three/addons/tsl/display/RGBShiftNode.js';
 // @ts-ignore
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import DebugPanel, { ShaderConfig, DEFAULT_CONFIG } from './DebugPanel';
+// @ts-ignore
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import DebugPanel, { ShaderConfig, DEFAULT_CONFIG, MeshSource } from './DebugPanel';
 
 const {
   positionLocal,
@@ -88,6 +90,7 @@ const RockScene: React.FC = () => {
   const [loadProgress, setLoadProgress] = useState(0);
   const [isLoaded, setIsLoaded] = useState(false);
   const [config, setConfig] = useState<ShaderConfig>(DEFAULT_CONFIG);
+  const gltfLoaderRef = useRef<any>(null);
   const sceneRefs = useRef<SceneRefs>({
     coreMesh: null,
     gelMesh: null,
@@ -249,6 +252,82 @@ const RockScene: React.FC = () => {
     setConfig(newConfig);
     updateSceneFromConfig(newConfig);
   }, [updateSceneFromConfig]);
+
+  // Handle GLTF mesh import
+  const handleMeshImport = useCallback((file: File) => {
+    if (!gltfLoaderRef.current) {
+      gltfLoaderRef.current = new GLTFLoader();
+    }
+
+    const url = URL.createObjectURL(file);
+    const loader = gltfLoaderRef.current;
+
+    loader.load(
+      url,
+      (gltf: any) => {
+        console.log('[GLTF] Loaded:', file.name, gltf);
+
+        // Find the first mesh in the loaded scene
+        let importedGeometry: THREE.BufferGeometry | null = null;
+
+        gltf.scene.traverse((child: any) => {
+          if (child.isMesh && !importedGeometry) {
+            importedGeometry = child.geometry.clone();
+            // Center and normalize the geometry
+            importedGeometry.computeBoundingBox();
+            const bbox = importedGeometry.boundingBox;
+            if (bbox) {
+              const center = new THREE.Vector3();
+              bbox.getCenter(center);
+              importedGeometry.translate(-center.x, -center.y, -center.z);
+
+              // Normalize scale to fit roughly in a unit sphere
+              const size = new THREE.Vector3();
+              bbox.getSize(size);
+              const maxDim = Math.max(size.x, size.y, size.z);
+              if (maxDim > 0) {
+                const scaleFactor = 1.0 / maxDim;
+                importedGeometry.scale(scaleFactor, scaleFactor, scaleFactor);
+              }
+            }
+            console.log('[GLTF] Extracted geometry from:', child.name || 'unnamed mesh');
+          }
+        });
+
+        if (importedGeometry && sceneRefs.current.coreMesh && sceneRefs.current.gelMesh) {
+          // Apply the imported geometry to both core and gel meshes
+          const refs = sceneRefs.current;
+
+          // Dispose old geometries
+          refs.coreGeometry?.dispose();
+          refs.gelGeometry?.dispose();
+
+          // Create scaled versions for core and gel
+          const coreGeo = importedGeometry.clone();
+          coreGeo.scale(config.core.radius * 2, config.core.radius * 2, config.core.radius * 2);
+          refs.coreMesh.geometry = coreGeo;
+          refs.coreGeometry = coreGeo;
+
+          const gelGeo = importedGeometry.clone();
+          gelGeo.scale(config.gel.radius, config.gel.radius, config.gel.radius);
+          refs.gelMesh.geometry = gelGeo;
+          refs.gelGeometry = gelGeo;
+
+          console.log('[GLTF] Applied custom geometry to scene meshes');
+        }
+
+        URL.revokeObjectURL(url);
+      },
+      (progress: any) => {
+        const percent = (progress.loaded / progress.total) * 100;
+        console.log('[GLTF] Loading:', percent.toFixed(0) + '%');
+      },
+      (error: any) => {
+        console.error('[GLTF] Error loading:', error);
+        URL.revokeObjectURL(url);
+      }
+    );
+  }, [config.core.radius, config.gel.radius]);
 
   useEffect(() => {
     if (!mountRef.current) return;
@@ -778,7 +857,7 @@ const RockScene: React.FC = () => {
       )}
 
       {/* Debug Panel */}
-      <DebugPanel config={config} onConfigChange={handleConfigChange} />
+      <DebugPanel config={config} onConfigChange={handleConfigChange} onMeshImport={handleMeshImport} />
     </div>
   );
 };
