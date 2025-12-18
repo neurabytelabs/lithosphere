@@ -1,10 +1,20 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import * as THREE from 'three';
 // @ts-ignore
-import { WebGPURenderer, MeshPhysicalNodeMaterial, TSL } from 'three/webgpu';
+import { WebGPURenderer, MeshPhysicalNodeMaterial, TSL, PostProcessing } from 'three/webgpu';
+// @ts-ignore
+import { pass } from 'three/tsl';
+// @ts-ignore
+import { bloom } from 'three/addons/tsl/display/BloomNode.js';
+// @ts-ignore
+import { rgbShift } from 'three/addons/tsl/display/RGBShiftNode.js';
 // @ts-ignore
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import DebugPanel, { ShaderConfig, DEFAULT_CONFIG } from './DebugPanel';
+// @ts-ignore
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+// @ts-ignore
+import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
+import DebugPanel, { ShaderConfig, DEFAULT_CONFIG, MeshSource } from './DebugPanel';
 
 const {
   positionLocal,
@@ -12,6 +22,9 @@ const {
   normalWorld,
   cameraPosition,
   vec3,
+  vec4,
+  vec2,
+  uv,
   uniform,
   float,
   mx_noise_float,
@@ -24,6 +37,11 @@ const {
   max,
   sin,
   cos,
+  sub,
+  mul,
+  length,
+  smoothstep,
+  Fn,
 } = TSL;
 
 // ============================================
@@ -47,6 +65,13 @@ interface SceneRefs {
   scene: THREE.Scene | null;
   camera: THREE.PerspectiveCamera | null;
   renderer: any;
+  // Environment
+  envMap: THREE.Texture | null;
+  // Post-processing
+  postProcessing: any;
+  bloomPass: any;
+  rgbShiftPass: any;
+  vignettePass: any;
   uniforms: {
     uTime: any;
     uPulseSpeed: any;
@@ -78,6 +103,9 @@ const RockScene: React.FC = () => {
   const [loadProgress, setLoadProgress] = useState(0);
   const [isLoaded, setIsLoaded] = useState(false);
   const [config, setConfig] = useState<ShaderConfig>(DEFAULT_CONFIG);
+  const gltfLoaderRef = useRef<any>(null);
+  const rgbeLoaderRef = useRef<any>(null);
+  const rendererRef = useRef<any>(null);
   const sceneRefs = useRef<SceneRefs>({
     coreMesh: null,
     gelMesh: null,
@@ -95,6 +123,13 @@ const RockScene: React.FC = () => {
     scene: null,
     camera: null,
     renderer: null,
+    // Environment
+    envMap: null,
+    // Post-processing
+    postProcessing: null,
+    bloomPass: null,
+    rgbShiftPass: null,
+    vignettePass: null,
     uniforms: null,
     animationConfig: {
       meshRotationSpeed: DEFAULT_CONFIG.animation.meshRotationSpeed,
@@ -123,7 +158,7 @@ const RockScene: React.FC = () => {
       refs.controls.dampingFactor = newConfig.camera.dampingFactor;
     }
 
-    // Update renderer (post-processing)
+    // Update renderer (tone mapping)
     if (refs.renderer) {
       refs.renderer.toneMappingExposure = newConfig.postProcess.exposure;
       // Tone mapping type mapping
@@ -134,6 +169,23 @@ const RockScene: React.FC = () => {
         'cineon': THREE.CineonToneMapping,
       };
       refs.renderer.toneMapping = toneMappingMap[newConfig.postProcess.toneMapping] || THREE.ACESFilmicToneMapping;
+    }
+
+    // Update post-processing effects
+    if (refs.bloomPass) {
+      refs.bloomPass.strength.value = newConfig.postProcess.bloomEnabled ? newConfig.postProcess.bloomIntensity : 0;
+      refs.bloomPass.radius.value = newConfig.postProcess.bloomRadius;
+      refs.bloomPass.threshold.value = newConfig.postProcess.bloomThreshold;
+    }
+    if (refs.rgbShiftPass) {
+      refs.rgbShiftPass.amount.value = newConfig.postProcess.chromaticAberrationEnabled
+        ? newConfig.postProcess.chromaticAberrationAmount
+        : 0;
+    }
+    if (refs.vignettePass) {
+      refs.vignettePass.intensity.value = newConfig.postProcess.vignetteEnabled
+        ? newConfig.postProcess.vignetteIntensity
+        : 0;
     }
 
     // Update lighting positions
@@ -217,12 +269,177 @@ const RockScene: React.FC = () => {
       dynamicLighting: newConfig.lighting.dynamicLighting,
       orbitSpeed: newConfig.lighting.orbitSpeed,
     };
+
+    // Update environment settings
+    if (refs.scene && refs.envMap) {
+      // Update environment intensity on materials
+      if (refs.gelMaterial) {
+        refs.gelMaterial.envMapIntensity = newConfig.environment.enabled
+          ? newConfig.environment.intensity
+          : 0;
+        refs.gelMaterial.needsUpdate = true;
+      }
+
+      // Update background visibility
+      if (newConfig.environment.backgroundVisible && newConfig.environment.enabled) {
+        refs.scene.background = refs.envMap;
+        refs.scene.backgroundBlurriness = newConfig.environment.backgroundBlur;
+      } else {
+        refs.scene.background = new THREE.Color('#000000');
+      }
+    }
+
+    // Clear environment if disabled
+    if (!newConfig.environment.enabled && refs.scene) {
+      refs.scene.environment = null;
+      refs.scene.background = new THREE.Color('#000000');
+      if (refs.gelMaterial) {
+        refs.gelMaterial.envMap = null;
+        refs.gelMaterial.needsUpdate = true;
+      }
+      if (refs.coreMaterial) {
+        refs.coreMaterial.envMap = null;
+        refs.coreMaterial.needsUpdate = true;
+      }
+      refs.envMap = null;
+    }
   }, []);
 
   const handleConfigChange = useCallback((newConfig: ShaderConfig) => {
     setConfig(newConfig);
     updateSceneFromConfig(newConfig);
   }, [updateSceneFromConfig]);
+
+  // Handle GLTF mesh import
+  const handleMeshImport = useCallback((file: File) => {
+    if (!gltfLoaderRef.current) {
+      gltfLoaderRef.current = new GLTFLoader();
+    }
+
+    const url = URL.createObjectURL(file);
+    const loader = gltfLoaderRef.current;
+
+    loader.load(
+      url,
+      (gltf: any) => {
+        console.log('[GLTF] Loaded:', file.name, gltf);
+
+        // Find the first mesh in the loaded scene
+        let importedGeometry: THREE.BufferGeometry | null = null;
+
+        gltf.scene.traverse((child: any) => {
+          if (child.isMesh && !importedGeometry) {
+            importedGeometry = child.geometry.clone();
+            // Center and normalize the geometry
+            importedGeometry.computeBoundingBox();
+            const bbox = importedGeometry.boundingBox;
+            if (bbox) {
+              const center = new THREE.Vector3();
+              bbox.getCenter(center);
+              importedGeometry.translate(-center.x, -center.y, -center.z);
+
+              // Normalize scale to fit roughly in a unit sphere
+              const size = new THREE.Vector3();
+              bbox.getSize(size);
+              const maxDim = Math.max(size.x, size.y, size.z);
+              if (maxDim > 0) {
+                const scaleFactor = 1.0 / maxDim;
+                importedGeometry.scale(scaleFactor, scaleFactor, scaleFactor);
+              }
+            }
+            console.log('[GLTF] Extracted geometry from:', child.name || 'unnamed mesh');
+          }
+        });
+
+        if (importedGeometry && sceneRefs.current.coreMesh && sceneRefs.current.gelMesh) {
+          // Apply the imported geometry to both core and gel meshes
+          const refs = sceneRefs.current;
+
+          // Dispose old geometries
+          refs.coreGeometry?.dispose();
+          refs.gelGeometry?.dispose();
+
+          // Create scaled versions for core and gel
+          const coreGeo = importedGeometry.clone();
+          coreGeo.scale(config.core.radius * 2, config.core.radius * 2, config.core.radius * 2);
+          refs.coreMesh.geometry = coreGeo;
+          refs.coreGeometry = coreGeo;
+
+          const gelGeo = importedGeometry.clone();
+          gelGeo.scale(config.gel.radius, config.gel.radius, config.gel.radius);
+          refs.gelMesh.geometry = gelGeo;
+          refs.gelGeometry = gelGeo;
+
+          console.log('[GLTF] Applied custom geometry to scene meshes');
+        }
+
+        URL.revokeObjectURL(url);
+      },
+      (progress: any) => {
+        const percent = (progress.loaded / progress.total) * 100;
+        console.log('[GLTF] Loading:', percent.toFixed(0) + '%');
+      },
+      (error: any) => {
+        console.error('[GLTF] Error loading:', error);
+        URL.revokeObjectURL(url);
+      }
+    );
+  }, [config.core.radius, config.gel.radius]);
+
+  // Handle HDR Environment Map import
+  const handleEnvMapImport = useCallback((file: File) => {
+    if (!rgbeLoaderRef.current) {
+      rgbeLoaderRef.current = new RGBELoader();
+    }
+
+    const url = URL.createObjectURL(file);
+    const loader = rgbeLoaderRef.current;
+
+    loader.load(
+      url,
+      (texture: THREE.Texture) => {
+        console.log('[HDR] Loaded:', file.name);
+
+        texture.mapping = THREE.EquirectangularReflectionMapping;
+
+        const refs = sceneRefs.current;
+        if (refs.scene) {
+          // Apply to scene environment (for reflections)
+          refs.scene.environment = texture;
+          refs.envMap = texture;
+
+          // Apply to materials for PBR reflections
+          if (refs.gelMaterial) {
+            refs.gelMaterial.envMap = texture;
+            refs.gelMaterial.envMapIntensity = config.environment.intensity;
+            refs.gelMaterial.needsUpdate = true;
+          }
+          if (refs.coreMaterial) {
+            refs.coreMaterial.envMap = texture;
+            refs.coreMaterial.needsUpdate = true;
+          }
+
+          // Set as background if enabled
+          if (config.environment.backgroundVisible) {
+            refs.scene.background = texture;
+            refs.scene.backgroundBlurriness = config.environment.backgroundBlur;
+          }
+
+          console.log('[HDR] Applied environment map to scene');
+        }
+
+        URL.revokeObjectURL(url);
+      },
+      (progress: any) => {
+        const percent = (progress.loaded / progress.total) * 100;
+        console.log('[HDR] Loading:', percent.toFixed(0) + '%');
+      },
+      (error: any) => {
+        console.error('[HDR] Error loading:', error);
+        URL.revokeObjectURL(url);
+      }
+    );
+  }, [config.environment.intensity, config.environment.backgroundVisible, config.environment.backgroundBlur]);
 
   useEffect(() => {
     if (!mountRef.current) return;
@@ -265,6 +482,7 @@ const RockScene: React.FC = () => {
         if (isDisposed || !mountRef.current) return;
         mountRef.current.appendChild(renderer.domElement);
         sceneRefs.current.renderer = renderer;
+        rendererRef.current = renderer;
       } catch (e) {
         console.error("Failed to initialize WebGPURenderer", e);
         return;
@@ -537,6 +755,76 @@ const RockScene: React.FC = () => {
       sceneRefs.current.ambientLight = ambientLight;
 
       // ============================================
+      // === POST-PROCESSING PIPELINE ===
+      // ============================================
+
+      let postProcessing: any = null;
+      let bloomPassNode: any = null;
+      let rgbShiftNode: any = null;
+
+      try {
+        // Create PostProcessing instance
+        postProcessing = new PostProcessing(renderer);
+
+        // Create scene pass
+        const scenePass = pass(scene, camera);
+        const scenePassColor = scenePass.getTextureNode('output');
+
+        // Create bloom effect with initial values from config
+        const bloomStrength = uniform(config.postProcess.bloomEnabled ? config.postProcess.bloomIntensity : 0);
+        const bloomRadius = uniform(config.postProcess.bloomRadius);
+        const bloomThreshold = uniform(config.postProcess.bloomThreshold);
+
+        bloomPassNode = bloom(scenePassColor, bloomStrength, bloomThreshold, bloomRadius);
+
+        // Create chromatic aberration (RGB shift) effect
+        const rgbShiftAmount = uniform(config.postProcess.chromaticAberrationEnabled
+          ? config.postProcess.chromaticAberrationAmount
+          : 0);
+
+        // Chain effects: scene + bloom, then apply rgbShift
+        const bloomedScene = scenePassColor.add(bloomPassNode);
+        rgbShiftNode = rgbShift(bloomedScene, rgbShiftAmount);
+
+        // Create vignette effect (custom TSL implementation)
+        const vignetteIntensity = uniform(config.postProcess.vignetteEnabled
+          ? config.postProcess.vignetteIntensity
+          : 0);
+
+        // Vignette: darken edges based on distance from center
+        // Uses uv coordinates (0-1), center is at 0.5, 0.5
+        const vignetteNode = Fn(() => {
+          const screenUV = uv();
+          const centeredUV = screenUV.sub(vec2(0.5, 0.5));
+          const dist = length(centeredUV).mul(1.4142); // sqrt(2) to normalize diagonal
+          const vignette = float(1.0).sub(smoothstep(float(0.5), float(1.5), dist).mul(vignetteIntensity));
+          return rgbShiftNode.mul(vec4(vignette, vignette, vignette, 1.0));
+        })();
+
+        // Set final output node
+        postProcessing.outputNode = vignetteNode;
+
+        // Store refs for runtime updates
+        sceneRefs.current.postProcessing = postProcessing;
+        sceneRefs.current.bloomPass = {
+          strength: bloomStrength,
+          radius: bloomRadius,
+          threshold: bloomThreshold,
+        };
+        sceneRefs.current.rgbShiftPass = {
+          amount: rgbShiftAmount,
+        };
+        sceneRefs.current.vignettePass = {
+          intensity: vignetteIntensity,
+        };
+
+        console.log('[PostProcessing] Pipeline initialized with bloom, chromatic aberration, and vignette');
+      } catch (e) {
+        console.warn('[PostProcessing] Failed to initialize, falling back to direct render:', e);
+        postProcessing = null;
+      }
+
+      // ============================================
       // === ANIMATION LOOP ===
       // ============================================
 
@@ -630,7 +918,12 @@ const RockScene: React.FC = () => {
         const redShift = Math.sin(elapsed * 0.4) * 0.05;
         halBackLight.color.setRGB(1.0, 0.1 + redShift, 0);
 
-        renderer.render(scene, camera);
+        // Use post-processing if available, otherwise direct render
+        if (postProcessing) {
+          postProcessing.render();
+        } else {
+          renderer.render(scene, camera);
+        }
       };
 
       const handleResize = () => {
@@ -695,7 +988,7 @@ const RockScene: React.FC = () => {
       )}
 
       {/* Debug Panel */}
-      <DebugPanel config={config} onConfigChange={handleConfigChange} />
+      <DebugPanel config={config} onConfigChange={handleConfigChange} onMeshImport={handleMeshImport} onEnvMapImport={handleEnvMapImport} rendererRef={rendererRef} />
     </div>
   );
 };

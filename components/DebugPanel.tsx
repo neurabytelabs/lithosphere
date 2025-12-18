@@ -75,6 +75,15 @@ export interface ShapeConfig {
   wireframe: boolean;
 }
 
+// Mesh source for custom GLTF imports
+export interface MeshSource {
+  type: 'builtin' | 'gltf';
+  builtinType?: ShapeConfig['type'];
+  gltfUrl?: string;
+  gltfName?: string;
+  scale?: number;
+}
+
 export interface CameraConfig {
   fov: number;
   distance: number;
@@ -86,9 +95,25 @@ export interface CameraConfig {
 export interface PostProcessConfig {
   exposure: number;
   toneMapping: 'aces' | 'reinhard' | 'linear' | 'cineon';
+  // Bloom
   bloomEnabled: boolean;
   bloomIntensity: number;
   bloomThreshold: number;
+  bloomRadius: number;
+  // Chromatic Aberration
+  chromaticAberrationEnabled: boolean;
+  chromaticAberrationAmount: number;
+  // Vignette
+  vignetteEnabled: boolean;
+  vignetteIntensity: number;
+}
+
+export interface EnvironmentConfig {
+  enabled: boolean;
+  intensity: number;
+  backgroundBlur: number;
+  backgroundVisible: boolean;
+  hdrName?: string;
 }
 
 export interface ShaderConfig {
@@ -99,6 +124,8 @@ export interface ShaderConfig {
   shape: ShapeConfig;
   camera: CameraConfig;
   postProcess: PostProcessConfig;
+  environment: EnvironmentConfig;
+  meshSource: MeshSource;
 }
 
 export const DEFAULT_CONFIG: ShaderConfig = {
@@ -178,9 +205,29 @@ export const DEFAULT_CONFIG: ShaderConfig = {
   postProcess: {
     exposure: 1.3,
     toneMapping: 'aces',
-    bloomEnabled: false,
-    bloomIntensity: 0.5,
-    bloomThreshold: 0.8,
+    // Bloom
+    bloomEnabled: true,
+    bloomIntensity: 1.0,
+    bloomThreshold: 0.2,
+    bloomRadius: 0.4,
+    // Chromatic Aberration
+    chromaticAberrationEnabled: false,
+    chromaticAberrationAmount: 0.002,
+    // Vignette
+    vignetteEnabled: false,
+    vignetteIntensity: 0.5,
+  },
+  environment: {
+    enabled: false,
+    intensity: 1.0,
+    backgroundBlur: 0.0,
+    backgroundVisible: false,
+    hdrName: undefined,
+  },
+  meshSource: {
+    type: 'builtin',
+    builtinType: 'icosahedron',
+    scale: 1.0,
   },
 };
 
@@ -206,6 +253,7 @@ export const PRESETS: Record<string, ShaderConfig> = {
       halCoreLightColor: [1.0, 0.0, 0.0],
       halCoreLightIntensity: 5.0,
     },
+    meshSource: { ...DEFAULT_CONFIG.meshSource },
   },
   'Blue Crystal': {
     ...DEFAULT_CONFIG,
@@ -876,14 +924,46 @@ User request: ${prompt}`;
 // === MAIN DEBUG PANEL ===
 // ============================================
 
+// Capture configuration
+export interface CaptureConfig {
+  screenshotFormat: 'png' | 'jpeg';
+  screenshotQuality: number;
+  videoFormat: 'webm';
+  videoBitrate: number;
+  videoFps: number;
+}
+
+export const DEFAULT_CAPTURE_CONFIG: CaptureConfig = {
+  screenshotFormat: 'png',
+  screenshotQuality: 0.95,
+  videoFormat: 'webm',
+  videoBitrate: 5000000, // 5 Mbps
+  videoFps: 60,
+};
+
 interface DebugPanelProps {
   config: ShaderConfig;
   onConfigChange: (config: ShaderConfig) => void;
+  onMeshImport?: (file: File) => void;
+  onEnvMapImport?: (file: File) => void;
+  rendererRef?: React.MutableRefObject<any>;
 }
 
-const DebugPanel: React.FC<DebugPanelProps> = ({ config, onConfigChange }) => {
+const DebugPanel: React.FC<DebugPanelProps> = ({ config, onConfigChange, onMeshImport, onEnvMapImport, rendererRef }) => {
   const [isOpen, setIsOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<'core' | 'gel' | 'lighting' | 'animation' | 'shape' | 'camera' | 'presets' | 'ai' | 'info'>('core');
+  const [activeTab, setActiveTab] = useState<'core' | 'gel' | 'lighting' | 'animation' | 'shape' | 'camera' | 'effects' | 'capture' | 'presets' | 'ai' | 'info'>('core');
+
+  // Capture state
+  const [captureConfig, setCaptureConfig] = useState<CaptureConfig>(DEFAULT_CAPTURE_CONFIG);
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingDuration, setRecordingDuration] = useState(0);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const recordedChunksRef = useRef<Blob[]>([]);
+  const recordingTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const [meshLoading, setMeshLoading] = useState(false);
+  const [envLoading, setEnvLoading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const envInputRef = useRef<HTMLInputElement>(null);
   const [geminiApiKey, setGeminiApiKey] = useState(() => {
     if (typeof window !== 'undefined') {
       return localStorage.getItem('gemini-api-key') || '';
@@ -941,6 +1021,61 @@ const DebugPanel: React.FC<DebugPanelProps> = ({ config, onConfigChange }) => {
   const updateCamera = useCallback((updates: Partial<CameraConfig>) => {
     onConfigChange({ ...config, camera: { ...config.camera, ...updates } });
   }, [config, onConfigChange]);
+
+  const updatePostProcess = useCallback((updates: Partial<PostProcessConfig>) => {
+    onConfigChange({ ...config, postProcess: { ...config.postProcess, ...updates } });
+  }, [config, onConfigChange]);
+
+  const updateMeshSource = useCallback((updates: Partial<MeshSource>) => {
+    onConfigChange({ ...config, meshSource: { ...config.meshSource, ...updates } });
+  }, [config, onConfigChange]);
+
+  const updateEnvironment = useCallback((updates: Partial<EnvironmentConfig>) => {
+    onConfigChange({ ...config, environment: { ...config.environment, ...updates } });
+  }, [config, onConfigChange]);
+
+  const handleEnvFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file && onEnvMapImport) {
+      setEnvLoading(true);
+      onEnvMapImport(file);
+      updateEnvironment({
+        enabled: true,
+        hdrName: file.name,
+      });
+      setTimeout(() => setEnvLoading(false), 2000);
+    }
+  }, [onEnvMapImport, updateEnvironment]);
+
+  const clearEnvMap = useCallback(() => {
+    updateEnvironment({
+      enabled: false,
+      hdrName: undefined,
+    });
+  }, [updateEnvironment]);
+
+  const handleMeshFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file && onMeshImport) {
+      setMeshLoading(true);
+      onMeshImport(file);
+      updateMeshSource({
+        type: 'gltf',
+        gltfName: file.name,
+        gltfUrl: URL.createObjectURL(file),
+      });
+      setTimeout(() => setMeshLoading(false), 1500);
+    }
+  }, [onMeshImport, updateMeshSource]);
+
+  const resetToBuiltinMesh = useCallback(() => {
+    updateMeshSource({
+      type: 'builtin',
+      builtinType: config.shape.type,
+      gltfUrl: undefined,
+      gltfName: undefined,
+    });
+  }, [updateMeshSource, config.shape.type]);
 
   const applyPreset = useCallback((presetName: string) => {
     const preset = PRESETS[presetName];
@@ -1005,6 +1140,263 @@ const DebugPanel: React.FC<DebugPanelProps> = ({ config, onConfigChange }) => {
     });
   };
 
+  // Generate TSL shader code from current config
+  const generateTSLCode = useCallback(() => {
+    const c = config.core;
+    const g = config.gel;
+    const colorToVec3 = (rgb: [number, number, number]) =>
+      `vec3(${rgb[0].toFixed(3)}, ${rgb[1].toFixed(3)}, ${rgb[2].toFixed(3)})`;
+
+    const code = `// ============================================
+// Lithosphere TSL Shader Configuration
+// Generated: ${new Date().toISOString()}
+// ============================================
+
+import {
+  positionLocal, normalLocal, normalWorld, cameraPosition,
+  vec3, uniform, float, mx_noise_float, mx_fractal_noise_float,
+  mix, clamp, pow, dot, normalize, max, sin, cos
+} from 'three/tsl';
+
+// === UNIFORM DECLARATIONS ===
+const uTime = uniform(0);
+const uPulseSpeed = uniform(${c.pulseSpeed.toFixed(2)});
+const uPulseIntensity = uniform(${c.pulseIntensity.toFixed(2)});
+const uNoiseScale = uniform(${c.noiseScale.toFixed(2)});
+const uNoiseIntensity = uniform(${c.noiseIntensity.toFixed(3)});
+const uEmissiveIntensity = uniform(${c.emissiveIntensity.toFixed(2)});
+
+// === CORE COLORS ===
+const uCoreColorDeep = uniform(new THREE.Color(${colorToVec3(c.colorDeep)}));
+const uCoreColorMid = uniform(new THREE.Color(${colorToVec3(c.colorMid)}));
+const uCoreColorGlow = uniform(new THREE.Color(${colorToVec3(c.colorGlow)}));
+const uCoreColorHot = uniform(new THREE.Color(${colorToVec3(c.colorHot)}));
+
+// === ANIMATION UNIFORMS ===
+const uBreatheSpeed = uniform(${config.animation.breatheSpeed.toFixed(2)});
+const uBreatheIntensity = uniform(${config.animation.breatheIntensity.toFixed(3)});
+const uWobbleSpeed = uniform(${config.animation.wobbleSpeed.toFixed(2)});
+const uWobbleIntensity = uniform(${config.animation.wobbleIntensity.toFixed(3)});
+const uNoiseAnimSpeed = uniform(${config.animation.noiseAnimSpeed.toFixed(3)});
+
+// === CORE DISPLACEMENT ===
+const coreAnimPos = positionLocal.add(
+  vec3(
+    sin(uTime.mul(0.3)).mul(0.02),
+    cos(uTime.mul(0.25)).mul(0.015),
+    sin(uTime.mul(0.35)).mul(0.02)
+  )
+);
+
+const coreNoise1 = mx_fractal_noise_float(
+  coreAnimPos.mul(uNoiseScale).add(vec3(uTime.mul(uNoiseAnimSpeed), 0, 0)),
+  float(3), float(2.0), float(0.5)
+);
+
+const breathe = sin(uTime.mul(uBreatheSpeed)).mul(uBreatheIntensity.mul(1.5)).add(1.0);
+const coreDisplacement = coreNoise1.mul(uNoiseIntensity).mul(breathe);
+const coreFinalPosition = positionLocal.add(normalLocal.mul(coreDisplacement));
+
+// === VIEW CALCULATIONS ===
+const viewDir = normalize(cameraPosition.sub(positionLocal));
+const ndotV = max(dot(normalLocal, viewDir), float(0.001));
+const fresnel = pow(float(1).sub(ndotV), float(2.5));
+const depth = pow(ndotV, float(1.5));
+
+// === HAL PULSE EFFECT ===
+const halPulse = sin(uTime.mul(uPulseSpeed)).mul(uPulseIntensity).add(float(1).sub(uPulseIntensity.mul(0.5)));
+const halIntensity = halPulse.mul(0.4).add(0.6);
+const halCenter = pow(ndotV, float(2.0));
+
+// === COLOR MIXING ===
+const halBase = mix(vec3(uCoreColorDeep), vec3(uCoreColorMid), depth);
+const halMid = mix(halBase, vec3(uCoreColorGlow), halCenter.mul(halIntensity));
+const halBright = mix(halMid, vec3(uCoreColorGlow), pow(halCenter, float(1.5)).mul(halIntensity));
+const coreColor = mix(halBright, vec3(uCoreColorHot), pow(halCenter, float(3.0)).mul(halPulse).mul(0.6));
+
+// === EMISSIVE ===
+const coreEmissive = vec3(uCoreColorGlow).mul(halCenter.mul(uEmissiveIntensity).mul(halIntensity));
+
+// === MATERIAL CONFIGURATION ===
+const coreMaterial = new MeshPhysicalNodeMaterial({
+  colorNode: coreColor,
+  emissiveNode: coreEmissive,
+  roughnessNode: mix(float(${c.roughness.toFixed(2)}), float(${(c.roughness + 0.15).toFixed(2)}), fresnel),
+  metalnessNode: float(${c.metalness.toFixed(2)}),
+  positionNode: coreFinalPosition,
+  clearcoat: ${c.clearcoat.toFixed(2)},
+  clearcoatRoughness: 0.05,
+});
+
+// === GEL SHELL MATERIAL ===
+const gelMaterial = new MeshPhysicalNodeMaterial({
+  transparent: true,
+  opacity: ${g.opacity.toFixed(2)},
+  transmission: ${g.transmission.toFixed(2)},
+  thickness: ${g.thickness.toFixed(2)},
+  ior: ${g.ior.toFixed(2)},
+  clearcoat: ${g.clearcoat.toFixed(2)},
+  clearcoatRoughness: ${g.clearcoatRoughness.toFixed(2)},
+  attenuationColor: new THREE.Color(${colorToVec3(g.attenuationColor)}),
+  attenuationDistance: ${g.attenuationDistance.toFixed(2)},
+});
+`;
+    return code;
+  }, [config]);
+
+  const copyTSLCode = useCallback(async () => {
+    const code = generateTSLCode();
+    await navigator.clipboard.writeText(code);
+    alert('TSL code copied to clipboard!');
+  }, [generateTSLCode]);
+
+  const downloadTSLCode = useCallback(() => {
+    const code = generateTSLCode();
+    const blob = new Blob([code], { type: 'text/javascript' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `lithosphere-shader-${Date.now()}.ts`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [generateTSLCode]);
+
+  // ============================================
+  // === CAPTURE FUNCTIONS ===
+  // ============================================
+
+  const takeScreenshot = useCallback(() => {
+    if (!rendererRef?.current) {
+      console.warn('[Capture] No renderer available');
+      return;
+    }
+
+    const renderer = rendererRef.current;
+    const canvas = renderer.domElement;
+
+    // Create a temporary canvas with the same dimensions
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = canvas.width;
+    tempCanvas.height = canvas.height;
+    const ctx = tempCanvas.getContext('2d');
+
+    if (!ctx) {
+      console.error('[Capture] Failed to get 2D context');
+      return;
+    }
+
+    // Draw the WebGPU canvas to the temp canvas
+    ctx.drawImage(canvas, 0, 0);
+
+    // Convert to data URL with specified format and quality
+    const mimeType = captureConfig.screenshotFormat === 'jpeg' ? 'image/jpeg' : 'image/png';
+    const dataUrl = tempCanvas.toDataURL(mimeType, captureConfig.screenshotQuality);
+
+    // Download
+    const link = document.createElement('a');
+    link.href = dataUrl;
+    link.download = `lithosphere-${Date.now()}.${captureConfig.screenshotFormat}`;
+    link.click();
+
+    console.log('[Capture] Screenshot saved');
+  }, [rendererRef, captureConfig.screenshotFormat, captureConfig.screenshotQuality]);
+
+  const startRecording = useCallback(() => {
+    if (!rendererRef?.current) {
+      console.warn('[Capture] No renderer available');
+      return;
+    }
+
+    const renderer = rendererRef.current;
+    const canvas = renderer.domElement;
+
+    // Get stream from canvas
+    const stream = canvas.captureStream(captureConfig.videoFps);
+
+    // Create MediaRecorder
+    const options: MediaRecorderOptions = {
+      mimeType: 'video/webm;codecs=vp9',
+      videoBitsPerSecond: captureConfig.videoBitrate,
+    };
+
+    // Fallback if vp9 is not supported
+    if (!MediaRecorder.isTypeSupported(options.mimeType!)) {
+      options.mimeType = 'video/webm;codecs=vp8';
+      if (!MediaRecorder.isTypeSupported(options.mimeType)) {
+        options.mimeType = 'video/webm';
+      }
+    }
+
+    try {
+      const mediaRecorder = new MediaRecorder(stream, options);
+      recordedChunksRef.current = [];
+
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          recordedChunksRef.current.push(event.data);
+        }
+      };
+
+      mediaRecorder.onstop = () => {
+        const blob = new Blob(recordedChunksRef.current, { type: 'video/webm' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `lithosphere-${Date.now()}.webm`;
+        link.click();
+        URL.revokeObjectURL(url);
+        console.log('[Capture] Video saved');
+      };
+
+      mediaRecorder.start(100); // Collect data every 100ms
+      mediaRecorderRef.current = mediaRecorder;
+      setIsRecording(true);
+      setRecordingDuration(0);
+
+      // Start duration timer
+      recordingTimerRef.current = setInterval(() => {
+        setRecordingDuration((prev) => prev + 1);
+      }, 1000);
+
+      console.log('[Capture] Recording started');
+    } catch (error) {
+      console.error('[Capture] Failed to start recording:', error);
+    }
+  }, [rendererRef, captureConfig.videoFps, captureConfig.videoBitrate]);
+
+  const stopRecording = useCallback(() => {
+    if (mediaRecorderRef.current && isRecording) {
+      mediaRecorderRef.current.stop();
+      mediaRecorderRef.current = null;
+      setIsRecording(false);
+
+      if (recordingTimerRef.current) {
+        clearInterval(recordingTimerRef.current);
+        recordingTimerRef.current = null;
+      }
+
+      console.log('[Capture] Recording stopped');
+    }
+  }, [isRecording]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (recordingTimerRef.current) {
+        clearInterval(recordingTimerRef.current);
+      }
+      if (mediaRecorderRef.current && isRecording) {
+        mediaRecorderRef.current.stop();
+      }
+    };
+  }, [isRecording]);
+
+  const formatDuration = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
+
   const tabs = [
     { id: 'core', label: 'Core', icon: '🔴', shortcut: '1' },
     { id: 'gel', label: 'Gel', icon: '💎', shortcut: '2' },
@@ -1012,9 +1404,11 @@ const DebugPanel: React.FC<DebugPanelProps> = ({ config, onConfigChange }) => {
     { id: 'animation', label: 'Anim', icon: '🎬', shortcut: '4' },
     { id: 'shape', label: 'Shape', icon: '🔷', shortcut: '5' },
     { id: 'camera', label: 'Camera', icon: '📷', shortcut: '6' },
-    { id: 'presets', label: 'Presets', icon: '📦', shortcut: '7' },
-    { id: 'ai', label: 'AI', icon: '🤖', shortcut: '8' },
-    { id: 'info', label: 'Info', icon: 'ℹ️', shortcut: '9' },
+    { id: 'effects', label: 'Effects', icon: '✨', shortcut: '7' },
+    { id: 'capture', label: 'Capture', icon: '📸', shortcut: '8' },
+    { id: 'presets', label: 'Presets', icon: '📦', shortcut: '9' },
+    { id: 'ai', label: 'AI', icon: '🤖', shortcut: '0' },
+    { id: 'info', label: 'Info', icon: 'ℹ️', shortcut: '' },
   ] as const;
 
   return (
@@ -1083,15 +1477,33 @@ const DebugPanel: React.FC<DebugPanelProps> = ({ config, onConfigChange }) => {
               <button
                 onClick={importConfig}
                 className="px-3 py-1.5 text-[10px] text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 rounded transition-colors"
+                title="Import JSON config"
               >
-                Import
+                📥 Import
               </button>
               <button
                 onClick={exportConfig}
                 className="px-3 py-1.5 text-[10px] text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 rounded transition-colors"
+                title="Export JSON config"
               >
-                Export
+                📤 Export
               </button>
+              <div className="h-4 w-px bg-zinc-700 mx-1" />
+              <button
+                onClick={copyTSLCode}
+                className="px-3 py-1.5 text-[10px] text-purple-400 hover:text-purple-300 hover:bg-purple-500/10 rounded transition-colors"
+                title="Copy TSL shader code"
+              >
+                📋 TSL
+              </button>
+              <button
+                onClick={downloadTSLCode}
+                className="px-3 py-1.5 text-[10px] text-purple-400 hover:text-purple-300 hover:bg-purple-500/10 rounded transition-colors"
+                title="Download TSL shader file"
+              >
+                💾 .ts
+              </button>
+              <div className="h-4 w-px bg-zinc-700 mx-1" />
               <button
                 onClick={() => onConfigChange(DEFAULT_CONFIG)}
                 className="px-3 py-1.5 text-[10px] text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 rounded transition-colors"
@@ -1260,7 +1672,7 @@ const DebugPanel: React.FC<DebugPanelProps> = ({ config, onConfigChange }) => {
 
             {/* Shape Tab */}
             {activeTab === 'shape' && (
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4">
                 <Section title="Geometry Type" icon="🔷" defaultOpen>
                   <Select
                     label="Shape"
@@ -1273,7 +1685,68 @@ const DebugPanel: React.FC<DebugPanelProps> = ({ config, onConfigChange }) => {
                       { value: 'torus', label: 'Torus (donut)' },
                       { value: 'torusKnot', label: 'Torus Knot (complex)' },
                     ]}
-                    onChange={(v) => updateShape({ type: v as ShapeConfig['type'] })}
+                    onChange={(v) => {
+                      updateShape({ type: v as ShapeConfig['type'] });
+                      if (config.meshSource.type === 'builtin') {
+                        updateMeshSource({ builtinType: v as ShapeConfig['type'] });
+                      }
+                    }}
+                  />
+                </Section>
+
+                <Section title="Import GLTF" icon="📁" defaultOpen badge="New">
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".gltf,.glb"
+                    onChange={handleMeshFileSelect}
+                    className="hidden"
+                  />
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={meshLoading}
+                    className="w-full py-2 px-3 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 hover:border-amber-500/50 rounded text-[11px] text-zinc-300 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {meshLoading ? (
+                      <span className="flex items-center justify-center gap-2">
+                        <span className="w-3 h-3 border border-amber-500 border-t-transparent rounded-full animate-spin" />
+                        Loading...
+                      </span>
+                    ) : (
+                      <span className="flex items-center justify-center gap-2">
+                        <span>📥</span>
+                        Upload GLTF/GLB
+                      </span>
+                    )}
+                  </button>
+                  {config.meshSource.type === 'gltf' && config.meshSource.gltfName && (
+                    <div className="mt-2 p-2 bg-zinc-800/50 rounded border border-amber-500/30">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] text-amber-400 truncate flex-1">
+                          📦 {config.meshSource.gltfName}
+                        </span>
+                        <button
+                          onClick={resetToBuiltinMesh}
+                          className="text-[9px] text-zinc-500 hover:text-red-400 ml-2"
+                          title="Remove custom mesh"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                  <p className="text-[9px] text-zinc-500 mt-2">
+                    Upload .gltf or .glb files. The first mesh will be used with the TSL shader.
+                  </p>
+                </Section>
+
+                <Section title="Mesh Scale" icon="📐" defaultOpen>
+                  <Slider
+                    label="Scale"
+                    value={config.meshSource.scale || 1.0}
+                    min={0.1} max={5} step={0.1}
+                    onChange={(v) => updateMeshSource({ scale: v })}
+                    tooltip="Uniform mesh scale"
                   />
                 </Section>
 
@@ -1299,6 +1772,274 @@ const DebugPanel: React.FC<DebugPanelProps> = ({ config, onConfigChange }) => {
 
                 <Section title="Controls" icon="🎮" defaultOpen>
                   <Slider label="Damping" value={config.camera.dampingFactor} min={0.01} max={0.2} step={0.01} onChange={(v) => updateCamera({ dampingFactor: v })} tooltip="Camera movement smoothness" />
+                </Section>
+              </div>
+            )}
+
+            {/* Effects Tab */}
+            {activeTab === 'effects' && (
+              <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                <Section title="Tone Mapping" icon="🎞️" defaultOpen>
+                  <Select
+                    label="Type"
+                    value={config.postProcess.toneMapping}
+                    options={[
+                      { value: 'aces', label: 'ACES Filmic' },
+                      { value: 'reinhard', label: 'Reinhard' },
+                      { value: 'linear', label: 'Linear' },
+                      { value: 'cineon', label: 'Cineon' },
+                    ]}
+                    onChange={(v) => updatePostProcess({ toneMapping: v as PostProcessConfig['toneMapping'] })}
+                  />
+                  <Slider
+                    label="Exposure"
+                    value={config.postProcess.exposure}
+                    min={0.1} max={3} step={0.05}
+                    onChange={(v) => updatePostProcess({ exposure: v })}
+                    tooltip="Overall brightness"
+                  />
+                </Section>
+
+                <Section title="Bloom" icon="🌟" defaultOpen badge="WebGPU">
+                  <Toggle
+                    label="Enabled"
+                    value={config.postProcess.bloomEnabled}
+                    onChange={(v) => updatePostProcess({ bloomEnabled: v })}
+                    tooltip="Enable bloom glow effect"
+                  />
+                  <Slider
+                    label="Intensity"
+                    value={config.postProcess.bloomIntensity}
+                    min={0} max={3} step={0.05}
+                    onChange={(v) => updatePostProcess({ bloomIntensity: v })}
+                    tooltip="Bloom glow strength"
+                  />
+                  <Slider
+                    label="Threshold"
+                    value={config.postProcess.bloomThreshold}
+                    min={0} max={1} step={0.01}
+                    onChange={(v) => updatePostProcess({ bloomThreshold: v })}
+                    tooltip="Brightness threshold for bloom"
+                  />
+                  <Slider
+                    label="Radius"
+                    value={config.postProcess.bloomRadius}
+                    min={0} max={1} step={0.01}
+                    onChange={(v) => updatePostProcess({ bloomRadius: v })}
+                    tooltip="Bloom spread radius"
+                  />
+                </Section>
+
+                <Section title="Chromatic Aberration" icon="🌈" defaultOpen badge="WebGPU">
+                  <Toggle
+                    label="Enabled"
+                    value={config.postProcess.chromaticAberrationEnabled}
+                    onChange={(v) => updatePostProcess({ chromaticAberrationEnabled: v })}
+                    tooltip="Enable RGB color separation effect"
+                  />
+                  <Slider
+                    label="Amount"
+                    value={config.postProcess.chromaticAberrationAmount}
+                    min={0} max={0.02} step={0.0005}
+                    onChange={(v) => updatePostProcess({ chromaticAberrationAmount: v })}
+                    tooltip="Color separation strength"
+                  />
+                </Section>
+
+                <Section title="Vignette" icon="🔲" defaultOpen badge="WebGPU">
+                  <Toggle
+                    label="Enabled"
+                    value={config.postProcess.vignetteEnabled}
+                    onChange={(v) => updatePostProcess({ vignetteEnabled: v })}
+                    tooltip="Enable edge darkening effect"
+                  />
+                  <Slider
+                    label="Intensity"
+                    value={config.postProcess.vignetteIntensity}
+                    min={0} max={1} step={0.01}
+                    onChange={(v) => updatePostProcess({ vignetteIntensity: v })}
+                    tooltip="Vignette darkness strength"
+                  />
+                </Section>
+
+                <Section title="Environment Map (HDR)" icon="🌍" defaultOpen badge="New">
+                  <input
+                    ref={envInputRef}
+                    type="file"
+                    accept=".hdr,.exr"
+                    onChange={handleEnvFileSelect}
+                    className="hidden"
+                  />
+                  <button
+                    onClick={() => envInputRef.current?.click()}
+                    disabled={envLoading}
+                    className="w-full py-2 px-3 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 hover:border-amber-500/50 rounded text-[11px] text-zinc-300 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {envLoading ? (
+                      <span className="flex items-center justify-center gap-2">
+                        <span className="w-3 h-3 border border-amber-500 border-t-transparent rounded-full animate-spin" />
+                        Loading HDR...
+                      </span>
+                    ) : (
+                      <span className="flex items-center justify-center gap-2">
+                        <span>🌍</span>
+                        Upload HDR/EXR
+                      </span>
+                    )}
+                  </button>
+                  {config.environment.enabled && config.environment.hdrName && (
+                    <div className="mt-2 p-2 bg-zinc-800/50 rounded border border-emerald-500/30">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] text-emerald-400 truncate flex-1">
+                          🌍 {config.environment.hdrName}
+                        </span>
+                        <button
+                          onClick={clearEnvMap}
+                          className="text-[9px] text-zinc-500 hover:text-red-400 ml-2"
+                          title="Remove HDR"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                  <Slider
+                    label="Intensity"
+                    value={config.environment.intensity}
+                    min={0} max={3} step={0.1}
+                    onChange={(v) => updateEnvironment({ intensity: v })}
+                    tooltip="Environment map intensity"
+                  />
+                  <Toggle
+                    label="Show Background"
+                    value={config.environment.backgroundVisible}
+                    onChange={(v) => updateEnvironment({ backgroundVisible: v })}
+                    tooltip="Display HDR as scene background"
+                  />
+                  {config.environment.backgroundVisible && (
+                    <Slider
+                      label="Background Blur"
+                      value={config.environment.backgroundBlur}
+                      min={0} max={1} step={0.05}
+                      onChange={(v) => updateEnvironment({ backgroundBlur: v })}
+                      tooltip="Blur the background image"
+                    />
+                  )}
+                  <p className="text-[9px] text-zinc-500 mt-2">
+                    Upload .hdr or .exr files for realistic reflections
+                  </p>
+                </Section>
+              </div>
+            )}
+
+            {/* Capture Tab */}
+            {activeTab === 'capture' && (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <Section title="Screenshot" icon="📸" defaultOpen badge="New">
+                  <Select
+                    label="Format"
+                    value={captureConfig.screenshotFormat}
+                    options={[
+                      { value: 'png', label: 'PNG (Lossless)' },
+                      { value: 'jpeg', label: 'JPEG (Smaller)' },
+                    ]}
+                    onChange={(v) => setCaptureConfig({ ...captureConfig, screenshotFormat: v as 'png' | 'jpeg' })}
+                  />
+                  {captureConfig.screenshotFormat === 'jpeg' && (
+                    <Slider
+                      label="Quality"
+                      value={captureConfig.screenshotQuality}
+                      min={0.5} max={1} step={0.05}
+                      onChange={(v) => setCaptureConfig({ ...captureConfig, screenshotQuality: v })}
+                      tooltip="JPEG compression quality"
+                    />
+                  )}
+                  <button
+                    onClick={takeScreenshot}
+                    disabled={!rendererRef?.current}
+                    className="w-full mt-3 py-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 disabled:from-zinc-700 disabled:to-zinc-700 text-white text-[12px] font-medium rounded transition-all disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  >
+                    <span>📸</span>
+                    <span>Take Screenshot</span>
+                  </button>
+                  <p className="text-[9px] text-zinc-500 mt-2 text-center">
+                    Captures the current view at full resolution
+                  </p>
+                </Section>
+
+                <Section title="Video Recording" icon="🎬" defaultOpen badge="New">
+                  <Slider
+                    label="Frame Rate"
+                    value={captureConfig.videoFps}
+                    min={24} max={60} step={1}
+                    onChange={(v) => setCaptureConfig({ ...captureConfig, videoFps: v })}
+                    unit=" fps"
+                    tooltip="Recording frame rate"
+                  />
+                  <Slider
+                    label="Bitrate"
+                    value={captureConfig.videoBitrate / 1000000}
+                    min={1} max={15} step={0.5}
+                    onChange={(v) => setCaptureConfig({ ...captureConfig, videoBitrate: v * 1000000 })}
+                    unit=" Mbps"
+                    tooltip="Video quality (higher = larger file)"
+                  />
+
+                  {isRecording ? (
+                    <div className="mt-3 space-y-3">
+                      <div className="flex items-center justify-center gap-3 py-3 bg-red-500/20 border border-red-500/30 rounded">
+                        <div className="w-3 h-3 rounded-full bg-red-500 animate-pulse" />
+                        <span className="text-red-400 font-mono text-[14px] font-bold">
+                          {formatDuration(recordingDuration)}
+                        </span>
+                        <span className="text-[10px] text-red-400/70">Recording...</span>
+                      </div>
+                      <button
+                        onClick={stopRecording}
+                        className="w-full py-3 bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white text-[12px] font-medium rounded transition-all flex items-center justify-center gap-2"
+                      >
+                        <span>⏹</span>
+                        <span>Stop & Save</span>
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={startRecording}
+                      disabled={!rendererRef?.current}
+                      className="w-full mt-3 py-3 bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 disabled:from-zinc-700 disabled:to-zinc-700 text-white text-[12px] font-medium rounded transition-all disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                    >
+                      <span>🔴</span>
+                      <span>Start Recording</span>
+                    </button>
+                  )}
+                  <p className="text-[9px] text-zinc-500 mt-2 text-center">
+                    Records as WebM video with VP9 codec
+                  </p>
+                </Section>
+
+                <Section title="Tips" icon="💡" defaultOpen>
+                  <div className="space-y-2 text-[10px] text-zinc-400">
+                    <div className="flex items-start gap-2">
+                      <span className="text-amber-400">📸</span>
+                      <span>Screenshots capture the current frame instantly</span>
+                    </div>
+                    <div className="flex items-start gap-2">
+                      <span className="text-amber-400">🎬</span>
+                      <span>Video captures animation in real-time</span>
+                    </div>
+                    <div className="flex items-start gap-2">
+                      <span className="text-amber-400">⚡</span>
+                      <span>Higher bitrate = better quality, larger files</span>
+                    </div>
+                    <div className="flex items-start gap-2">
+                      <span className="text-amber-400">🎯</span>
+                      <span>Use PNG for maximum quality screenshots</span>
+                    </div>
+                    <div className="flex items-start gap-2">
+                      <span className="text-amber-400">🖥</span>
+                      <span>Resolution matches your screen size</span>
+                    </div>
+                  </div>
                 </Section>
               </div>
             )}
