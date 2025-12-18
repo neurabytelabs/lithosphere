@@ -1071,6 +1071,127 @@ const DebugPanel: React.FC<DebugPanelProps> = ({ config, onConfigChange, onMeshI
     });
   };
 
+  // Generate TSL shader code from current config
+  const generateTSLCode = useCallback(() => {
+    const c = config.core;
+    const g = config.gel;
+    const colorToVec3 = (rgb: [number, number, number]) =>
+      `vec3(${rgb[0].toFixed(3)}, ${rgb[1].toFixed(3)}, ${rgb[2].toFixed(3)})`;
+
+    const code = `// ============================================
+// Lithosphere TSL Shader Configuration
+// Generated: ${new Date().toISOString()}
+// ============================================
+
+import {
+  positionLocal, normalLocal, normalWorld, cameraPosition,
+  vec3, uniform, float, mx_noise_float, mx_fractal_noise_float,
+  mix, clamp, pow, dot, normalize, max, sin, cos
+} from 'three/tsl';
+
+// === UNIFORM DECLARATIONS ===
+const uTime = uniform(0);
+const uPulseSpeed = uniform(${c.pulseSpeed.toFixed(2)});
+const uPulseIntensity = uniform(${c.pulseIntensity.toFixed(2)});
+const uNoiseScale = uniform(${c.noiseScale.toFixed(2)});
+const uNoiseIntensity = uniform(${c.noiseIntensity.toFixed(3)});
+const uEmissiveIntensity = uniform(${c.emissiveIntensity.toFixed(2)});
+
+// === CORE COLORS ===
+const uCoreColorDeep = uniform(new THREE.Color(${colorToVec3(c.colorDeep)}));
+const uCoreColorMid = uniform(new THREE.Color(${colorToVec3(c.colorMid)}));
+const uCoreColorGlow = uniform(new THREE.Color(${colorToVec3(c.colorGlow)}));
+const uCoreColorHot = uniform(new THREE.Color(${colorToVec3(c.colorHot)}));
+
+// === ANIMATION UNIFORMS ===
+const uBreatheSpeed = uniform(${config.animation.breatheSpeed.toFixed(2)});
+const uBreatheIntensity = uniform(${config.animation.breatheIntensity.toFixed(3)});
+const uWobbleSpeed = uniform(${config.animation.wobbleSpeed.toFixed(2)});
+const uWobbleIntensity = uniform(${config.animation.wobbleIntensity.toFixed(3)});
+const uNoiseAnimSpeed = uniform(${config.animation.noiseAnimSpeed.toFixed(3)});
+
+// === CORE DISPLACEMENT ===
+const coreAnimPos = positionLocal.add(
+  vec3(
+    sin(uTime.mul(0.3)).mul(0.02),
+    cos(uTime.mul(0.25)).mul(0.015),
+    sin(uTime.mul(0.35)).mul(0.02)
+  )
+);
+
+const coreNoise1 = mx_fractal_noise_float(
+  coreAnimPos.mul(uNoiseScale).add(vec3(uTime.mul(uNoiseAnimSpeed), 0, 0)),
+  float(3), float(2.0), float(0.5)
+);
+
+const breathe = sin(uTime.mul(uBreatheSpeed)).mul(uBreatheIntensity.mul(1.5)).add(1.0);
+const coreDisplacement = coreNoise1.mul(uNoiseIntensity).mul(breathe);
+const coreFinalPosition = positionLocal.add(normalLocal.mul(coreDisplacement));
+
+// === VIEW CALCULATIONS ===
+const viewDir = normalize(cameraPosition.sub(positionLocal));
+const ndotV = max(dot(normalLocal, viewDir), float(0.001));
+const fresnel = pow(float(1).sub(ndotV), float(2.5));
+const depth = pow(ndotV, float(1.5));
+
+// === HAL PULSE EFFECT ===
+const halPulse = sin(uTime.mul(uPulseSpeed)).mul(uPulseIntensity).add(float(1).sub(uPulseIntensity.mul(0.5)));
+const halIntensity = halPulse.mul(0.4).add(0.6);
+const halCenter = pow(ndotV, float(2.0));
+
+// === COLOR MIXING ===
+const halBase = mix(vec3(uCoreColorDeep), vec3(uCoreColorMid), depth);
+const halMid = mix(halBase, vec3(uCoreColorGlow), halCenter.mul(halIntensity));
+const halBright = mix(halMid, vec3(uCoreColorGlow), pow(halCenter, float(1.5)).mul(halIntensity));
+const coreColor = mix(halBright, vec3(uCoreColorHot), pow(halCenter, float(3.0)).mul(halPulse).mul(0.6));
+
+// === EMISSIVE ===
+const coreEmissive = vec3(uCoreColorGlow).mul(halCenter.mul(uEmissiveIntensity).mul(halIntensity));
+
+// === MATERIAL CONFIGURATION ===
+const coreMaterial = new MeshPhysicalNodeMaterial({
+  colorNode: coreColor,
+  emissiveNode: coreEmissive,
+  roughnessNode: mix(float(${c.roughness.toFixed(2)}), float(${(c.roughness + 0.15).toFixed(2)}), fresnel),
+  metalnessNode: float(${c.metalness.toFixed(2)}),
+  positionNode: coreFinalPosition,
+  clearcoat: ${c.clearcoat.toFixed(2)},
+  clearcoatRoughness: 0.05,
+});
+
+// === GEL SHELL MATERIAL ===
+const gelMaterial = new MeshPhysicalNodeMaterial({
+  transparent: true,
+  opacity: ${g.opacity.toFixed(2)},
+  transmission: ${g.transmission.toFixed(2)},
+  thickness: ${g.thickness.toFixed(2)},
+  ior: ${g.ior.toFixed(2)},
+  clearcoat: ${g.clearcoat.toFixed(2)},
+  clearcoatRoughness: ${g.clearcoatRoughness.toFixed(2)},
+  attenuationColor: new THREE.Color(${colorToVec3(g.attenuationColor)}),
+  attenuationDistance: ${g.attenuationDistance.toFixed(2)},
+});
+`;
+    return code;
+  }, [config]);
+
+  const copyTSLCode = useCallback(async () => {
+    const code = generateTSLCode();
+    await navigator.clipboard.writeText(code);
+    alert('TSL code copied to clipboard!');
+  }, [generateTSLCode]);
+
+  const downloadTSLCode = useCallback(() => {
+    const code = generateTSLCode();
+    const blob = new Blob([code], { type: 'text/javascript' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `lithosphere-shader-${Date.now()}.ts`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [generateTSLCode]);
+
   const tabs = [
     { id: 'core', label: 'Core', icon: '🔴', shortcut: '1' },
     { id: 'gel', label: 'Gel', icon: '💎', shortcut: '2' },
@@ -1150,15 +1271,33 @@ const DebugPanel: React.FC<DebugPanelProps> = ({ config, onConfigChange, onMeshI
               <button
                 onClick={importConfig}
                 className="px-3 py-1.5 text-[10px] text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 rounded transition-colors"
+                title="Import JSON config"
               >
-                Import
+                📥 Import
               </button>
               <button
                 onClick={exportConfig}
                 className="px-3 py-1.5 text-[10px] text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 rounded transition-colors"
+                title="Export JSON config"
               >
-                Export
+                📤 Export
               </button>
+              <div className="h-4 w-px bg-zinc-700 mx-1" />
+              <button
+                onClick={copyTSLCode}
+                className="px-3 py-1.5 text-[10px] text-purple-400 hover:text-purple-300 hover:bg-purple-500/10 rounded transition-colors"
+                title="Copy TSL shader code"
+              >
+                📋 TSL
+              </button>
+              <button
+                onClick={downloadTSLCode}
+                className="px-3 py-1.5 text-[10px] text-purple-400 hover:text-purple-300 hover:bg-purple-500/10 rounded transition-colors"
+                title="Download TSL shader file"
+              >
+                💾 .ts
+              </button>
+              <div className="h-4 w-px bg-zinc-700 mx-1" />
               <button
                 onClick={() => onConfigChange(DEFAULT_CONFIG)}
                 className="px-3 py-1.5 text-[10px] text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 rounded transition-colors"
