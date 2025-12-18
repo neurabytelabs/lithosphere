@@ -137,14 +137,55 @@ Open the **SHADER STUDIO** panel at the bottom of the screen:
 
 ---
 
+## Changelog
+
+<!-- CHANGELOG_START -->
+### v2.1 (December 2024)
+**New Features:**
+- 🎬 **Camera Tab** - FOV, distance limits, damping controls
+- 💡 **Advanced Lighting** - Key light position (X/Y/Z), dynamic lighting toggle, orbit speed
+- 🎡 **Animation Controls** - Mesh rotation speed, breathing sync, wobble intensity
+- 🎲 **Random Button** - One-click color randomization
+- ⌨️ **Keyboard Shortcuts** - ~ toggle panel, 1-8 switch tabs, Esc close
+- 📊 **FPS Counter** - Real-time performance monitoring
+- 🌈 **4 New Presets** - Nebula, Deep Ocean, Lava Core, Frozen
+- 🔧 **Wireframe Mode** - Debug visualization option
+- 💾 **API Key Persistence** - Gemini key saved to localStorage
+- 📝 **Tooltips** - Helpful hints on all controls
+
+### v2.0 (December 2024)
+**Major Update:**
+- ✨ **Shader Studio Panel** - Professional debug interface inspired by Substance Designer
+- 🎨 **10 Presets** - HAL 9000, Blue Crystal, Toxic Green, Golden Sun, Purple Void, White Dwarf + 4 new
+- 🤖 **Gemini AI Integration** - Natural language shader suggestions
+- 📦 **Import/Export** - Save and share configurations as JSON
+- 🔴 **Core Controls** - Colors, emissive, pulse, noise displacement
+- 💎 **Gel Controls** - Transmission, IOR, thickness, attenuation
+- 💡 **Lighting Controls** - Key, fill, rim, HAL core lights
+
+### v1.0 (November 2024)
+**Initial Release:**
+- 🌐 **WebGPU Rendering** - Three.js with TSL (Three Shading Language)
+- 🔮 **Dual-Mesh System** - Inner core + outer gel shell
+- 🎭 **HAL 9000 Aesthetic** - Iconic glowing red orb
+- 🌊 **MaterialX Noise** - Procedural displacement
+- 🔄 **Auto-Rotation** - Smooth orbital animation
+- 💨 **60 FPS** - Optimized performance
+<!-- CHANGELOG_END -->
+
+---
+
 ## Roadmap
 
 - [x] WebGPU rendering with Three.js TSL
 - [x] Dual-mesh system (core + gel shell)
 - [x] Real-time shader parameter controls
-- [x] 6 built-in presets
+- [x] 10 built-in presets
 - [x] Import/Export configurations
 - [x] Gemini AI integration
+- [x] Camera controls (FOV, distance)
+- [x] Advanced animation controls
+- [x] Keyboard shortcuts
 - [ ] More geometry types (custom meshes, GLTF import)
 - [ ] Audio reactivity (microphone/audio file input)
 - [ ] Post-processing effects (bloom, chromatic aberration)

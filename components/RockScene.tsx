@@ -45,6 +45,8 @@ interface SceneRefs {
   ambientLight: THREE.AmbientLight | null;
   controls: OrbitControls | null;
   scene: THREE.Scene | null;
+  camera: THREE.PerspectiveCamera | null;
+  renderer: any;
   uniforms: {
     uTime: any;
     uPulseSpeed: any;
@@ -56,7 +58,19 @@ interface SceneRefs {
     uCoreColorGlow: any;
     uCoreColorHot: any;
     uEmissiveIntensity: any;
+    uBreatheSpeed: any;
+    uBreatheIntensity: any;
+    uWobbleSpeed: any;
+    uWobbleIntensity: any;
+    uNoiseAnimSpeed: any;
   } | null;
+  // Animation state
+  animationConfig: {
+    meshRotationSpeed: number;
+    syncBreathing: boolean;
+    dynamicLighting: boolean;
+    orbitSpeed: number;
+  };
 }
 
 const RockScene: React.FC = () => {
@@ -79,17 +93,58 @@ const RockScene: React.FC = () => {
     ambientLight: null,
     controls: null,
     scene: null,
+    camera: null,
+    renderer: null,
     uniforms: null,
+    animationConfig: {
+      meshRotationSpeed: DEFAULT_CONFIG.animation.meshRotationSpeed,
+      syncBreathing: DEFAULT_CONFIG.animation.syncBreathing,
+      dynamicLighting: DEFAULT_CONFIG.lighting.dynamicLighting,
+      orbitSpeed: DEFAULT_CONFIG.lighting.orbitSpeed,
+    },
   });
 
   // Update scene when config changes
   const updateSceneFromConfig = useCallback((newConfig: ShaderConfig) => {
     const refs = sceneRefs.current;
 
-    // Update lighting
+    // Update camera
+    if (refs.camera) {
+      refs.camera.fov = newConfig.camera.fov;
+      refs.camera.updateProjectionMatrix();
+    }
+
+    // Update controls
+    if (refs.controls) {
+      refs.controls.autoRotate = newConfig.animation.autoRotate;
+      refs.controls.autoRotateSpeed = newConfig.animation.autoRotateSpeed;
+      refs.controls.minDistance = newConfig.camera.minDistance;
+      refs.controls.maxDistance = newConfig.camera.maxDistance;
+      refs.controls.dampingFactor = newConfig.camera.dampingFactor;
+    }
+
+    // Update renderer (post-processing)
+    if (refs.renderer) {
+      refs.renderer.toneMappingExposure = newConfig.postProcess.exposure;
+      // Tone mapping type mapping
+      const toneMappingMap: Record<string, number> = {
+        'aces': THREE.ACESFilmicToneMapping,
+        'reinhard': THREE.ReinhardToneMapping,
+        'linear': THREE.LinearToneMapping,
+        'cineon': THREE.CineonToneMapping,
+      };
+      refs.renderer.toneMapping = toneMappingMap[newConfig.postProcess.toneMapping] || THREE.ACESFilmicToneMapping;
+    }
+
+    // Update lighting positions
     if (refs.keyLight) {
       refs.keyLight.intensity = newConfig.lighting.keyLightIntensity;
       refs.keyLight.color.setRGB(...newConfig.lighting.keyLightColor);
+      refs.keyLight.position.set(
+        newConfig.lighting.keyLightX,
+        newConfig.lighting.keyLightY,
+        newConfig.lighting.keyLightZ
+      );
     }
     if (refs.fillLight) {
       refs.fillLight.intensity = newConfig.lighting.fillLightIntensity;
@@ -101,15 +156,10 @@ const RockScene: React.FC = () => {
     if (refs.halCoreLight) {
       refs.halCoreLight.intensity = newConfig.lighting.halCoreLightIntensity;
       refs.halCoreLight.color.setRGB(...newConfig.lighting.halCoreLightColor);
+      refs.halCoreLight.distance = newConfig.lighting.halCoreLightDistance;
     }
     if (refs.ambientLight) {
       refs.ambientLight.intensity = newConfig.lighting.ambientIntensity;
-    }
-
-    // Update controls
-    if (refs.controls) {
-      refs.controls.autoRotate = newConfig.animation.autoRotate;
-      refs.controls.autoRotateSpeed = newConfig.animation.autoRotateSpeed;
     }
 
     // Update gel material properties
@@ -124,11 +174,13 @@ const RockScene: React.FC = () => {
       refs.gelMaterial.specularIntensity = newConfig.gel.specularIntensity;
       refs.gelMaterial.attenuationColor.setRGB(...newConfig.gel.attenuationColor);
       refs.gelMaterial.attenuationDistance = newConfig.gel.attenuationDistance;
+      refs.gelMaterial.wireframe = newConfig.shape.wireframe;
     }
 
     // Update core material properties
     if (refs.coreMaterial) {
       refs.coreMaterial.clearcoat = newConfig.core.clearcoat;
+      refs.coreMaterial.wireframe = newConfig.shape.wireframe;
     }
 
     // Update visibility
@@ -139,7 +191,7 @@ const RockScene: React.FC = () => {
       refs.gelMesh.visible = newConfig.shape.gelVisible;
     }
 
-    // Update uniforms
+    // Update uniforms for shader parameters
     if (refs.uniforms) {
       refs.uniforms.uPulseSpeed.value = newConfig.core.pulseSpeed;
       refs.uniforms.uPulseIntensity.value = newConfig.core.pulseIntensity;
@@ -150,7 +202,21 @@ const RockScene: React.FC = () => {
       refs.uniforms.uCoreColorMid.value.set(...newConfig.core.colorMid);
       refs.uniforms.uCoreColorGlow.value.set(...newConfig.core.colorGlow);
       refs.uniforms.uCoreColorHot.value.set(...newConfig.core.colorHot);
+      // Animation uniforms
+      refs.uniforms.uBreatheSpeed.value = newConfig.animation.breatheSpeed;
+      refs.uniforms.uBreatheIntensity.value = newConfig.animation.breatheIntensity;
+      refs.uniforms.uWobbleSpeed.value = newConfig.animation.wobbleSpeed;
+      refs.uniforms.uWobbleIntensity.value = newConfig.animation.wobbleIntensity;
+      refs.uniforms.uNoiseAnimSpeed.value = newConfig.animation.noiseAnimSpeed;
     }
+
+    // Update animation config for the render loop
+    refs.animationConfig = {
+      meshRotationSpeed: newConfig.animation.meshRotationSpeed,
+      syncBreathing: newConfig.animation.syncBreathing,
+      dynamicLighting: newConfig.lighting.dynamicLighting,
+      orbitSpeed: newConfig.lighting.orbitSpeed,
+    };
   }, []);
 
   const handleConfigChange = useCallback((newConfig: ShaderConfig) => {
@@ -171,8 +237,9 @@ const RockScene: React.FC = () => {
       const width = window.innerWidth;
       const height = window.innerHeight;
 
-      const camera = new THREE.PerspectiveCamera(35, width / height, 0.1, 100);
-      camera.position.set(0, 0.5, 5);
+      const camera = new THREE.PerspectiveCamera(config.camera.fov, width / height, 0.1, 100);
+      camera.position.set(0, 0.5, config.camera.distance);
+      sceneRefs.current.camera = camera;
 
       const scene = new THREE.Scene();
       scene.background = new THREE.Color('#000000');
@@ -182,13 +249,22 @@ const RockScene: React.FC = () => {
         renderer = new WebGPURenderer({ antialias: true });
         renderer.setSize(width, height);
         renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-        renderer.toneMapping = THREE.ACESFilmicToneMapping;
-        renderer.toneMappingExposure = 1.3;
+
+        // Apply post-processing settings from config
+        const toneMappingMap: Record<string, number> = {
+          'aces': THREE.ACESFilmicToneMapping,
+          'reinhard': THREE.ReinhardToneMapping,
+          'linear': THREE.LinearToneMapping,
+          'cineon': THREE.CineonToneMapping,
+        };
+        renderer.toneMapping = toneMappingMap[config.postProcess.toneMapping] || THREE.ACESFilmicToneMapping;
+        renderer.toneMappingExposure = config.postProcess.exposure;
 
         await renderer.init();
 
         if (isDisposed || !mountRef.current) return;
         mountRef.current.appendChild(renderer.domElement);
+        sceneRefs.current.renderer = renderer;
       } catch (e) {
         console.error("Failed to initialize WebGPURenderer", e);
         return;
@@ -196,12 +272,12 @@ const RockScene: React.FC = () => {
 
       const controls = new OrbitControls(camera, renderer.domElement);
       controls.enableDamping = true;
-      controls.dampingFactor = 0.03;
+      controls.dampingFactor = config.camera.dampingFactor;
       controls.autoRotate = config.animation.autoRotate;
       controls.autoRotateSpeed = config.animation.autoRotateSpeed;
       controls.enableZoom = true;
-      controls.minDistance = 2;
-      controls.maxDistance = 15;
+      controls.minDistance = config.camera.minDistance;
+      controls.maxDistance = config.camera.maxDistance;
       sceneRefs.current.controls = controls;
 
       // ============================================
@@ -219,6 +295,13 @@ const RockScene: React.FC = () => {
       const uCoreColorGlow = uniform(new THREE.Color(...config.core.colorGlow));
       const uCoreColorHot = uniform(new THREE.Color(...config.core.colorHot));
 
+      // Animation uniforms
+      const uBreatheSpeed = uniform(config.animation.breatheSpeed);
+      const uBreatheIntensity = uniform(config.animation.breatheIntensity);
+      const uWobbleSpeed = uniform(config.animation.wobbleSpeed);
+      const uWobbleIntensity = uniform(config.animation.wobbleIntensity);
+      const uNoiseAnimSpeed = uniform(config.animation.noiseAnimSpeed);
+
       sceneRefs.current.uniforms = {
         uTime,
         uPulseSpeed,
@@ -230,6 +313,11 @@ const RockScene: React.FC = () => {
         uCoreColorGlow,
         uCoreColorHot,
         uEmissiveIntensity,
+        uBreatheSpeed,
+        uBreatheIntensity,
+        uWobbleSpeed,
+        uWobbleIntensity,
+        uNoiseAnimSpeed,
       };
 
       // ============================================
@@ -250,16 +338,17 @@ const RockScene: React.FC = () => {
 
       // Noise displacement using configurable uniforms
       const coreNoise1 = mx_fractal_noise_float(
-        coreAnimPos.mul(uNoiseScale).add(vec3(uTime.mul(0.15), 0, 0)),
+        coreAnimPos.mul(uNoiseScale).add(vec3(uTime.mul(uNoiseAnimSpeed), 0, 0)),
         float(3),
         float(2.0),
         float(0.5)
       );
       const coreNoise2 = mx_noise_float(
-        coreAnimPos.mul(uNoiseScale.mul(2)).add(vec3(0, uTime.mul(0.12), uTime.mul(0.1)))
+        coreAnimPos.mul(uNoiseScale.mul(2)).add(vec3(0, uTime.mul(uNoiseAnimSpeed.mul(0.8)), uTime.mul(uNoiseAnimSpeed.mul(0.67))))
       );
 
-      const breathe = sin(uTime.mul(0.8)).mul(0.03).add(1.0);
+      // Use configurable breathing parameters
+      const breathe = sin(uTime.mul(uBreatheSpeed)).mul(uBreatheIntensity.mul(1.5)).add(1.0);
       const coreDisplacement = coreNoise1.mul(uNoiseIntensity).add(coreNoise2.mul(uNoiseIntensity.mul(0.4))).mul(breathe);
       const coreFinalPosition = positionLocal.add(normalLocal.mul(coreDisplacement));
 
@@ -325,16 +414,17 @@ const RockScene: React.FC = () => {
       );
 
       const gelNoise1 = mx_fractal_noise_float(
-        gelAnimPos.mul(1.2).add(vec3(uTime.mul(0.1), uTime.mul(0.08), 0)),
+        gelAnimPos.mul(1.2).add(vec3(uTime.mul(uNoiseAnimSpeed.mul(0.67)), uTime.mul(uNoiseAnimSpeed.mul(0.53)), 0)),
         float(2),
         float(2.0),
         float(0.5)
       );
       const gelNoise2 = mx_noise_float(
-        gelAnimPos.mul(2.5).add(vec3(0, 0, uTime.mul(0.15)))
+        gelAnimPos.mul(2.5).add(vec3(0, 0, uTime.mul(uNoiseAnimSpeed)))
       );
 
-      const gelBreathe = sin(uTime.mul(0.8).add(0.2)).mul(0.02).add(1.0);
+      // Use configurable breathing parameters for gel
+      const gelBreathe = sin(uTime.mul(uBreatheSpeed).add(0.2)).mul(uBreatheIntensity).add(1.0);
       const gelDisplacement = gelNoise1.mul(0.06).add(gelNoise2.mul(0.025)).mul(gelBreathe);
       const gelFinalPosition = positionLocal.add(normalLocal.mul(gelDisplacement));
 
@@ -404,7 +494,7 @@ const RockScene: React.FC = () => {
 
       const keyLight = new THREE.DirectionalLight('#ffffff', config.lighting.keyLightIntensity);
       keyLight.color.setRGB(...config.lighting.keyLightColor);
-      keyLight.position.set(5, 5, 6);
+      keyLight.position.set(config.lighting.keyLightX, config.lighting.keyLightY, config.lighting.keyLightZ);
       scene.add(keyLight);
       sceneRefs.current.keyLight = keyLight;
 
@@ -427,7 +517,7 @@ const RockScene: React.FC = () => {
       rimLight2.position.set(4, 1, -5);
       scene.add(rimLight2);
 
-      const halCoreLight = new THREE.PointLight('#ff0000', config.lighting.halCoreLightIntensity, 4);
+      const halCoreLight = new THREE.PointLight('#ff0000', config.lighting.halCoreLightIntensity, config.lighting.halCoreLightDistance);
       halCoreLight.color.setRGB(...config.lighting.halCoreLightColor);
       halCoreLight.position.set(0, 0, 0);
       scene.add(halCoreLight);
@@ -487,33 +577,50 @@ const RockScene: React.FC = () => {
           setLoadProgress(100);
         }
 
-        // Mesh movement
-        const baseRotY = elapsed * 0.05;
-        const wobbleX = Math.sin(elapsed * 0.7) * 0.02;
-        const wobbleZ = Math.cos(elapsed * 0.6) * 0.015;
+        // Get animation config from refs
+        const animConfig = sceneRefs.current.animationConfig;
+        const uniforms = sceneRefs.current.uniforms;
+
+        // Mesh movement with configurable rotation speed
+        const baseRotY = elapsed * animConfig.meshRotationSpeed;
+        const wobbleX = Math.sin(elapsed * (uniforms?.uWobbleSpeed?.value || 0.7)) * (uniforms?.uWobbleIntensity?.value || 0.02);
+        const wobbleZ = Math.cos(elapsed * (uniforms?.uWobbleSpeed?.value || 0.6) * 0.857) * ((uniforms?.uWobbleIntensity?.value || 0.02) * 0.75);
 
         coreMesh.rotation.y = baseRotY;
         coreMesh.rotation.x = wobbleX;
         coreMesh.rotation.z = wobbleZ;
 
-        gelMesh.rotation.y = baseRotY + Math.sin(elapsed * 0.3) * 0.01;
-        gelMesh.rotation.x = wobbleX + Math.cos(elapsed * 0.4) * 0.008;
-        gelMesh.rotation.z = wobbleZ + Math.sin(elapsed * 0.5) * 0.006;
+        // Gel can sync with core or have slight offset
+        if (animConfig.syncBreathing) {
+          gelMesh.rotation.y = baseRotY;
+          gelMesh.rotation.x = wobbleX * 0.8;
+          gelMesh.rotation.z = wobbleZ * 0.8;
+        } else {
+          gelMesh.rotation.y = baseRotY + Math.sin(elapsed * 0.3) * 0.01;
+          gelMesh.rotation.x = wobbleX + Math.cos(elapsed * 0.4) * 0.008;
+          gelMesh.rotation.z = wobbleZ + Math.sin(elapsed * 0.5) * 0.006;
+        }
 
-        // Breathing
-        const breatheCore = 1.0 + Math.sin(elapsed * 0.8) * 0.02;
-        const breatheGel = 1.0 + Math.sin(elapsed * 0.8 + 0.15) * 0.015;
+        // Breathing with configurable parameters
+        const breatheSpeed = uniforms?.uBreatheSpeed?.value || 0.8;
+        const breatheIntensity = uniforms?.uBreatheIntensity?.value || 0.02;
+        const breatheCore = 1.0 + Math.sin(elapsed * breatheSpeed) * breatheIntensity;
+        const breatheGel = animConfig.syncBreathing
+          ? 1.0 + Math.sin(elapsed * breatheSpeed) * (breatheIntensity * 0.75)
+          : 1.0 + Math.sin(elapsed * breatheSpeed + 0.15) * (breatheIntensity * 0.75);
 
         coreMesh.scale.setScalar(breatheCore);
         gelMesh.scale.setScalar(breatheGel);
 
-        // Dynamic lighting
-        const lightAngle = elapsed * 0.08;
-        keyLight.position.x = Math.sin(lightAngle) * 7;
-        keyLight.position.z = Math.cos(lightAngle) * 7;
+        // Dynamic lighting (can be toggled)
+        if (animConfig.dynamicLighting) {
+          const lightAngle = elapsed * animConfig.orbitSpeed;
+          keyLight.position.x = Math.sin(lightAngle) * 7;
+          keyLight.position.z = Math.cos(lightAngle) * 7;
 
-        rimLight2.position.x = Math.sin(lightAngle + Math.PI) * 5;
-        rimLight2.position.z = Math.cos(lightAngle + Math.PI) * 5;
+          rimLight2.position.x = Math.sin(lightAngle + Math.PI) * 5;
+          rimLight2.position.z = Math.cos(lightAngle + Math.PI) * 5;
+        }
 
         const halLightPulse = Math.sin(elapsed * 0.8) * 0.5 + 1.0;
         halCoreLight.intensity = sceneRefs.current.halCoreLight?.intensity || 5.0;
