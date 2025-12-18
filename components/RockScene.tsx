@@ -12,6 +12,8 @@ import { rgbShift } from 'three/addons/tsl/display/RGBShiftNode.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 // @ts-ignore
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+// @ts-ignore
+import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
 import DebugPanel, { ShaderConfig, DEFAULT_CONFIG, MeshSource } from './DebugPanel';
 
 const {
@@ -63,6 +65,8 @@ interface SceneRefs {
   scene: THREE.Scene | null;
   camera: THREE.PerspectiveCamera | null;
   renderer: any;
+  // Environment
+  envMap: THREE.Texture | null;
   // Post-processing
   postProcessing: any;
   bloomPass: any;
@@ -100,6 +104,7 @@ const RockScene: React.FC = () => {
   const [isLoaded, setIsLoaded] = useState(false);
   const [config, setConfig] = useState<ShaderConfig>(DEFAULT_CONFIG);
   const gltfLoaderRef = useRef<any>(null);
+  const rgbeLoaderRef = useRef<any>(null);
   const rendererRef = useRef<any>(null);
   const sceneRefs = useRef<SceneRefs>({
     coreMesh: null,
@@ -118,6 +123,8 @@ const RockScene: React.FC = () => {
     scene: null,
     camera: null,
     renderer: null,
+    // Environment
+    envMap: null,
     // Post-processing
     postProcessing: null,
     bloomPass: null,
@@ -262,6 +269,40 @@ const RockScene: React.FC = () => {
       dynamicLighting: newConfig.lighting.dynamicLighting,
       orbitSpeed: newConfig.lighting.orbitSpeed,
     };
+
+    // Update environment settings
+    if (refs.scene && refs.envMap) {
+      // Update environment intensity on materials
+      if (refs.gelMaterial) {
+        refs.gelMaterial.envMapIntensity = newConfig.environment.enabled
+          ? newConfig.environment.intensity
+          : 0;
+        refs.gelMaterial.needsUpdate = true;
+      }
+
+      // Update background visibility
+      if (newConfig.environment.backgroundVisible && newConfig.environment.enabled) {
+        refs.scene.background = refs.envMap;
+        refs.scene.backgroundBlurriness = newConfig.environment.backgroundBlur;
+      } else {
+        refs.scene.background = new THREE.Color('#000000');
+      }
+    }
+
+    // Clear environment if disabled
+    if (!newConfig.environment.enabled && refs.scene) {
+      refs.scene.environment = null;
+      refs.scene.background = new THREE.Color('#000000');
+      if (refs.gelMaterial) {
+        refs.gelMaterial.envMap = null;
+        refs.gelMaterial.needsUpdate = true;
+      }
+      if (refs.coreMaterial) {
+        refs.coreMaterial.envMap = null;
+        refs.coreMaterial.needsUpdate = true;
+      }
+      refs.envMap = null;
+    }
   }, []);
 
   const handleConfigChange = useCallback((newConfig: ShaderConfig) => {
@@ -344,6 +385,61 @@ const RockScene: React.FC = () => {
       }
     );
   }, [config.core.radius, config.gel.radius]);
+
+  // Handle HDR Environment Map import
+  const handleEnvMapImport = useCallback((file: File) => {
+    if (!rgbeLoaderRef.current) {
+      rgbeLoaderRef.current = new RGBELoader();
+    }
+
+    const url = URL.createObjectURL(file);
+    const loader = rgbeLoaderRef.current;
+
+    loader.load(
+      url,
+      (texture: THREE.Texture) => {
+        console.log('[HDR] Loaded:', file.name);
+
+        texture.mapping = THREE.EquirectangularReflectionMapping;
+
+        const refs = sceneRefs.current;
+        if (refs.scene) {
+          // Apply to scene environment (for reflections)
+          refs.scene.environment = texture;
+          refs.envMap = texture;
+
+          // Apply to materials for PBR reflections
+          if (refs.gelMaterial) {
+            refs.gelMaterial.envMap = texture;
+            refs.gelMaterial.envMapIntensity = config.environment.intensity;
+            refs.gelMaterial.needsUpdate = true;
+          }
+          if (refs.coreMaterial) {
+            refs.coreMaterial.envMap = texture;
+            refs.coreMaterial.needsUpdate = true;
+          }
+
+          // Set as background if enabled
+          if (config.environment.backgroundVisible) {
+            refs.scene.background = texture;
+            refs.scene.backgroundBlurriness = config.environment.backgroundBlur;
+          }
+
+          console.log('[HDR] Applied environment map to scene');
+        }
+
+        URL.revokeObjectURL(url);
+      },
+      (progress: any) => {
+        const percent = (progress.loaded / progress.total) * 100;
+        console.log('[HDR] Loading:', percent.toFixed(0) + '%');
+      },
+      (error: any) => {
+        console.error('[HDR] Error loading:', error);
+        URL.revokeObjectURL(url);
+      }
+    );
+  }, [config.environment.intensity, config.environment.backgroundVisible, config.environment.backgroundBlur]);
 
   useEffect(() => {
     if (!mountRef.current) return;
@@ -892,7 +988,7 @@ const RockScene: React.FC = () => {
       )}
 
       {/* Debug Panel */}
-      <DebugPanel config={config} onConfigChange={handleConfigChange} onMeshImport={handleMeshImport} rendererRef={rendererRef} />
+      <DebugPanel config={config} onConfigChange={handleConfigChange} onMeshImport={handleMeshImport} onEnvMapImport={handleEnvMapImport} rendererRef={rendererRef} />
     </div>
   );
 };

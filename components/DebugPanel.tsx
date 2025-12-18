@@ -108,6 +108,14 @@ export interface PostProcessConfig {
   vignetteIntensity: number;
 }
 
+export interface EnvironmentConfig {
+  enabled: boolean;
+  intensity: number;
+  backgroundBlur: number;
+  backgroundVisible: boolean;
+  hdrName?: string;
+}
+
 export interface ShaderConfig {
   core: CoreConfig;
   gel: GelConfig;
@@ -116,6 +124,7 @@ export interface ShaderConfig {
   shape: ShapeConfig;
   camera: CameraConfig;
   postProcess: PostProcessConfig;
+  environment: EnvironmentConfig;
   meshSource: MeshSource;
 }
 
@@ -207,6 +216,13 @@ export const DEFAULT_CONFIG: ShaderConfig = {
     // Vignette
     vignetteEnabled: false,
     vignetteIntensity: 0.5,
+  },
+  environment: {
+    enabled: false,
+    intensity: 1.0,
+    backgroundBlur: 0.0,
+    backgroundVisible: false,
+    hdrName: undefined,
   },
   meshSource: {
     type: 'builtin',
@@ -929,10 +945,11 @@ interface DebugPanelProps {
   config: ShaderConfig;
   onConfigChange: (config: ShaderConfig) => void;
   onMeshImport?: (file: File) => void;
+  onEnvMapImport?: (file: File) => void;
   rendererRef?: React.MutableRefObject<any>;
 }
 
-const DebugPanel: React.FC<DebugPanelProps> = ({ config, onConfigChange, onMeshImport, rendererRef }) => {
+const DebugPanel: React.FC<DebugPanelProps> = ({ config, onConfigChange, onMeshImport, onEnvMapImport, rendererRef }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'core' | 'gel' | 'lighting' | 'animation' | 'shape' | 'camera' | 'effects' | 'capture' | 'presets' | 'ai' | 'info'>('core');
 
@@ -944,7 +961,9 @@ const DebugPanel: React.FC<DebugPanelProps> = ({ config, onConfigChange, onMeshI
   const recordedChunksRef = useRef<Blob[]>([]);
   const recordingTimerRef = useRef<NodeJS.Timeout | null>(null);
   const [meshLoading, setMeshLoading] = useState(false);
+  const [envLoading, setEnvLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const envInputRef = useRef<HTMLInputElement>(null);
   const [geminiApiKey, setGeminiApiKey] = useState(() => {
     if (typeof window !== 'undefined') {
       return localStorage.getItem('gemini-api-key') || '';
@@ -1010,6 +1029,30 @@ const DebugPanel: React.FC<DebugPanelProps> = ({ config, onConfigChange, onMeshI
   const updateMeshSource = useCallback((updates: Partial<MeshSource>) => {
     onConfigChange({ ...config, meshSource: { ...config.meshSource, ...updates } });
   }, [config, onConfigChange]);
+
+  const updateEnvironment = useCallback((updates: Partial<EnvironmentConfig>) => {
+    onConfigChange({ ...config, environment: { ...config.environment, ...updates } });
+  }, [config, onConfigChange]);
+
+  const handleEnvFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file && onEnvMapImport) {
+      setEnvLoading(true);
+      onEnvMapImport(file);
+      updateEnvironment({
+        enabled: true,
+        hdrName: file.name,
+      });
+      setTimeout(() => setEnvLoading(false), 2000);
+    }
+  }, [onEnvMapImport, updateEnvironment]);
+
+  const clearEnvMap = useCallback(() => {
+    updateEnvironment({
+      enabled: false,
+      hdrName: undefined,
+    });
+  }, [updateEnvironment]);
 
   const handleMeshFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -1817,6 +1860,74 @@ const gelMaterial = new MeshPhysicalNodeMaterial({
                     onChange={(v) => updatePostProcess({ vignetteIntensity: v })}
                     tooltip="Vignette darkness strength"
                   />
+                </Section>
+
+                <Section title="Environment Map (HDR)" icon="🌍" defaultOpen badge="New">
+                  <input
+                    ref={envInputRef}
+                    type="file"
+                    accept=".hdr,.exr"
+                    onChange={handleEnvFileSelect}
+                    className="hidden"
+                  />
+                  <button
+                    onClick={() => envInputRef.current?.click()}
+                    disabled={envLoading}
+                    className="w-full py-2 px-3 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 hover:border-amber-500/50 rounded text-[11px] text-zinc-300 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {envLoading ? (
+                      <span className="flex items-center justify-center gap-2">
+                        <span className="w-3 h-3 border border-amber-500 border-t-transparent rounded-full animate-spin" />
+                        Loading HDR...
+                      </span>
+                    ) : (
+                      <span className="flex items-center justify-center gap-2">
+                        <span>🌍</span>
+                        Upload HDR/EXR
+                      </span>
+                    )}
+                  </button>
+                  {config.environment.enabled && config.environment.hdrName && (
+                    <div className="mt-2 p-2 bg-zinc-800/50 rounded border border-emerald-500/30">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] text-emerald-400 truncate flex-1">
+                          🌍 {config.environment.hdrName}
+                        </span>
+                        <button
+                          onClick={clearEnvMap}
+                          className="text-[9px] text-zinc-500 hover:text-red-400 ml-2"
+                          title="Remove HDR"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                  <Slider
+                    label="Intensity"
+                    value={config.environment.intensity}
+                    min={0} max={3} step={0.1}
+                    onChange={(v) => updateEnvironment({ intensity: v })}
+                    tooltip="Environment map intensity"
+                  />
+                  <Toggle
+                    label="Show Background"
+                    value={config.environment.backgroundVisible}
+                    onChange={(v) => updateEnvironment({ backgroundVisible: v })}
+                    tooltip="Display HDR as scene background"
+                  />
+                  {config.environment.backgroundVisible && (
+                    <Slider
+                      label="Background Blur"
+                      value={config.environment.backgroundBlur}
+                      min={0} max={1} step={0.05}
+                      onChange={(v) => updateEnvironment({ backgroundBlur: v })}
+                      tooltip="Blur the background image"
+                    />
+                  )}
+                  <p className="text-[9px] text-zinc-500 mt-2">
+                    Upload .hdr or .exr files for realistic reflections
+                  </p>
                 </Section>
               </div>
             )}
