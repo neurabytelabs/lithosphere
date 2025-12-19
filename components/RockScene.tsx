@@ -347,44 +347,10 @@ const RockScene: React.FC = () => {
     updateSceneFromConfig(newConfig);
   }, [updateSceneFromConfig]);
 
-  // Handle panel toggle - animate camera when panel opens/closes
+  // Handle panel toggle - no camera animation needed since panel is on the right side
   const handlePanelToggle = useCallback((isOpen: boolean) => {
-    const refs = sceneRefs.current;
-    if (!refs.controls || !refs.camera) return;
-
-    const currentDistance = refs.camera.position.length();
-    const currentTargetY = refs.controls.target.y;
-
-    // Calculate target values based on panel state
-    // When panel opens: zoom out MORE and shift orbit center UP significantly
-    // This ensures the orb stays centered in the visible area above the panel
-    const targetDistance = isOpen
-      ? currentDistance + 3  // Zoom out +3 units when panel opens (more breathing room)
-      : refs.panelClosedDistance; // Return to default when panel closes
-
-    const targetTargetY = isOpen
-      ? 1.5  // Move orbit center UP significantly (orb appears higher on screen)
-      : 0;   // Return to center when panel closes
-
-    // Start camera animation
-    refs.cameraAnimation = {
-      isAnimating: true,
-      startDistance: currentDistance,
-      targetDistance,
-      startTargetY: currentTargetY,
-      targetTargetY,
-      startFov: refs.camera.fov,
-      targetFov: refs.camera.fov, // Keep current FOV
-      startTime: performance.now(),
-      duration: 500, // 0.5 seconds
-    };
-
-    // Update panel distances for future reference
-    if (isOpen) {
-      refs.panelOpenDistance = targetDistance;
-    }
-
-    console.log(`[Camera] Panel ${isOpen ? 'opened' : 'closed'} - animating to distance: ${targetDistance}, targetY: ${targetTargetY}`);
+    // Panel is now on the right side, no camera adjustment needed
+    console.log(`[Panel] ${isOpen ? 'opened' : 'closed'}`);
   }, []);
 
   // Handle GLTF mesh import

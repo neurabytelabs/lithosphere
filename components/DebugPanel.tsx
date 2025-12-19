@@ -1447,109 +1447,106 @@ const gelMaterial = new MeshPhysicalNodeMaterial({
 
   return (
     <>
-      {/* Toggle Button */}
+      {/* Toggle Button - Right Side */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className={`fixed bottom-4 left-1/2 -translate-x-1/2 z-50 px-6 py-2.5 rounded-full
-          bg-gradient-to-r from-zinc-900 to-zinc-800 border border-zinc-700
+        className={`fixed right-0 top-1/2 -translate-y-1/2 z-50 px-2 py-4 rounded-l-lg
+          bg-gradient-to-l from-zinc-900 to-zinc-800 border border-r-0 border-zinc-700
           hover:border-amber-500/50 transition-all shadow-2xl backdrop-blur-sm
-          ${isOpen ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}
+          ${isOpen ? 'opacity-0 pointer-events-none translate-x-full' : 'opacity-100 translate-x-0'}`}
       >
-        <div className="flex items-center gap-3">
+        <div className="flex flex-col items-center gap-2">
           <span className="text-amber-400 text-sm">⚙</span>
-          <span className="text-[11px] font-medium text-zinc-300 tracking-wide">SHADER STUDIO</span>
-          <span className="text-[9px] text-zinc-500 border border-zinc-700 px-1.5 py-0.5 rounded">~</span>
-          <span className="text-zinc-500 text-[10px]">▲</span>
+          <span className="text-[10px] font-medium text-zinc-300 tracking-wide [writing-mode:vertical-rl] rotate-180">STUDIO</span>
+          <span className="text-zinc-500 text-[10px]">◀</span>
         </div>
       </button>
 
-      {/* Panel */}
+      {/* Panel - Right Side */}
       <div
-        className={`fixed bottom-0 left-0 right-0 z-40 transition-transform duration-500 ease-out
-          ${isOpen ? 'translate-y-0' : 'translate-y-full'}`}
+        className={`fixed right-0 top-0 bottom-0 w-[380px] z-40 transition-transform duration-500 ease-out flex
+          ${isOpen ? 'translate-x-0' : 'translate-x-full'}`}
       >
-        {/* Header */}
-        <div className="bg-gradient-to-r from-zinc-900 via-zinc-800 to-zinc-900 border-t border-zinc-700 px-4 py-2">
-          <div className="flex items-center justify-between max-w-7xl mx-auto">
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-                <span className="text-[12px] font-bold text-zinc-200 tracking-wider">SHADER STUDIO</span>
-                <span className="text-[9px] text-zinc-500 font-mono">{VERSION_SHORT}</span>
-              </div>
-
-              <FPSCounter />
-
-              {/* Tabs */}
-              <div className="flex gap-1 ml-2">
-                {tabs.map((tab) => (
-                  <button
-                    key={tab.id}
-                    onClick={() => setActiveTab(tab.id)}
-                    className={`px-3 py-1.5 rounded text-[10px] font-medium transition-all flex items-center gap-1.5
-                      ${activeTab === tab.id
-                        ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
-                        : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'
-                      }`}
-                    title={`Press ${tab.shortcut}`}
-                  >
-                    <span>{tab.icon}</span>
-                    <span className="hidden sm:inline">{tab.label}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="flex items-center gap-1">
-              {/* Quick Actions */}
-              <button
-                onClick={randomize}
-                className="px-3 py-1.5 text-[10px] text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 rounded transition-colors"
-                title="Randomize colors"
-              >
-                🎲
-              </button>
-
-              {/* Config Dropdown */}
-              <Dropdown
-                icon="📦"
-                label="Config"
-                items={[
-                  { icon: '📥', label: 'Import JSON', onClick: importConfig },
-                  { icon: '📤', label: 'Export JSON', onClick: exportConfig },
-                  { icon: '🔄', label: 'Reset All', onClick: () => onConfigChange(DEFAULT_CONFIG), color: 'red' },
-                ]}
-              />
-
-              {/* Code Export Dropdown */}
-              <Dropdown
-                icon="📋"
-                label="Code"
-                color="purple"
-                items={[
-                  { icon: '📋', label: 'Copy TSL', onClick: copyTSLCode, color: 'purple' },
-                  { icon: '💾', label: 'Download .ts', onClick: downloadTSLCode, color: 'purple' },
-                ]}
-              />
-
-              <div className="h-4 w-px bg-zinc-700 mx-1" />
-              <button
-                onClick={() => setIsOpen(false)}
-                className="w-7 h-7 flex items-center justify-center text-zinc-400 hover:text-white hover:bg-zinc-700 rounded transition-colors"
-                title="Press Escape"
-              >
-                ✕
-              </button>
-            </div>
-          </div>
+        {/* Vertical Tab Sidebar */}
+        <div className="w-14 bg-zinc-900 border-r border-zinc-800 flex flex-col py-2">
+          {tabs.map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`w-full py-3 flex flex-col items-center gap-1 transition-all relative group
+                ${activeTab === tab.id
+                  ? 'bg-amber-500/10 text-amber-400'
+                  : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800'
+                }`}
+              title={`${tab.label} (${tab.shortcut})`}
+            >
+              {activeTab === tab.id && (
+                <div className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-6 bg-amber-500 rounded-r" />
+              )}
+              <span className="text-base">{tab.icon}</span>
+              <span className="text-[8px] font-medium">{tab.label}</span>
+            </button>
+          ))}
         </div>
 
-        {/* Content */}
-        <div className="bg-zinc-900/95 backdrop-blur-xl border-t border-zinc-800 max-h-[55vh] overflow-y-auto">
-          <div className="max-w-7xl mx-auto p-4">
+        {/* Main Content Area */}
+        <div className="flex-1 flex flex-col bg-zinc-900/95 backdrop-blur-xl border-l border-zinc-800">
+          {/* Header */}
+          <div className="flex-shrink-0 bg-zinc-900 border-b border-zinc-800 px-4 py-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                <span className="text-[11px] font-bold text-zinc-200 tracking-wider">SHADER STUDIO</span>
+                <span className="text-[9px] text-zinc-500 font-mono">{VERSION_SHORT}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <FPSCounter />
+                <button
+                  onClick={() => setIsOpen(false)}
+                  className="w-6 h-6 flex items-center justify-center text-zinc-400 hover:text-white hover:bg-zinc-700 rounded transition-colors"
+                  title="Press Escape"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Actions Bar */}
+          <div className="flex-shrink-0 bg-zinc-900/80 border-b border-zinc-800 px-3 py-2 flex items-center gap-1 flex-wrap">
+            <button
+              onClick={randomize}
+              className="px-2 py-1 text-[10px] text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 rounded transition-colors"
+              title="Randomize colors"
+            >
+              🎲 Random
+            </button>
+            <Dropdown
+              icon="📦"
+              label="Config"
+              items={[
+                { icon: '📥', label: 'Import JSON', onClick: importConfig },
+                { icon: '📤', label: 'Export JSON', onClick: exportConfig },
+                { icon: '🔄', label: 'Reset All', onClick: () => onConfigChange(DEFAULT_CONFIG), color: 'red' },
+              ]}
+            />
+            <Dropdown
+              icon="📋"
+              label="Code"
+              color="purple"
+              items={[
+                { icon: '📋', label: 'Copy TSL', onClick: copyTSLCode, color: 'purple' },
+                { icon: '💾', label: 'Download .ts', onClick: downloadTSLCode, color: 'purple' },
+              ]}
+            />
+          </div>
+
+          {/* Scrollable Content */}
+          <div className="flex-1 overflow-y-auto p-3">
+            <div className="space-y-3">
             {/* Core Tab */}
             {activeTab === 'core' && (
-              <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4">
+              <>
                 <Section title="Geometry" icon="📐" defaultOpen badge="Live">
                   <Slider
                     label="Radius"
@@ -1590,12 +1587,12 @@ const gelMaterial = new MeshPhysicalNodeMaterial({
                   <Slider label="Scale" value={config.core.noiseScale} min={0.5} max={8} step={0.1} onChange={(v) => updateCore({ noiseScale: v })} tooltip="Noise pattern size" />
                   <Slider label="Intensity" value={config.core.noiseIntensity} min={0} max={0.25} step={0.01} onChange={(v) => updateCore({ noiseIntensity: v })} tooltip="Displacement amount" />
                 </Section>
-              </div>
+              </>
             )}
 
             {/* Gel Tab */}
             {activeTab === 'gel' && (
-              <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4">
+              <>
                 <Section title="Geometry" icon="📐" defaultOpen>
                   <Slider label="Radius" value={config.gel.radius} min={0.6} max={1.8} step={0.05} onChange={(v) => updateGel({ radius: v })} />
                   <Slider label="Subdivision" value={config.gel.subdivision} min={32} max={128} step={8} onChange={(v) => updateGel({ subdivision: v })} />
@@ -1627,12 +1624,12 @@ const gelMaterial = new MeshPhysicalNodeMaterial({
                 <Section title="Core Bleed" icon="⚡">
                   <Slider label="Red Bleed" value={config.gel.redBleedIntensity} min={0} max={1} step={0.01} onChange={(v) => updateGel({ redBleedIntensity: v })} tooltip="Inner core color bleeding through" />
                 </Section>
-              </div>
+              </>
             )}
 
             {/* Lighting Tab */}
             {activeTab === 'lighting' && (
-              <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4">
+              <>
                 <Section title="Key Light" icon="☀️" defaultOpen>
                   <Slider label="Intensity" value={config.lighting.keyLightIntensity} min={0} max={10} step={0.1} onChange={(v) => updateLighting({ keyLightIntensity: v })} />
                   <ColorPicker label="Color" value={config.lighting.keyLightColor} onChange={(v) => updateLighting({ keyLightColor: v })} />
@@ -1661,12 +1658,12 @@ const gelMaterial = new MeshPhysicalNodeMaterial({
                   <Toggle label="Dynamic Lighting" value={config.lighting.dynamicLighting} onChange={(v) => updateLighting({ dynamicLighting: v })} tooltip="Animated light orbiting" />
                   <Slider label="Orbit Speed" value={config.lighting.orbitSpeed} min={0} max={0.5} step={0.01} onChange={(v) => updateLighting({ orbitSpeed: v })} />
                 </Section>
-              </div>
+              </>
             )}
 
             {/* Animation Tab */}
             {activeTab === 'animation' && (
-              <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4">
+              <>
                 <Section title="Auto Rotate" icon="🔄" defaultOpen>
                   <Toggle label="Enabled" value={config.animation.autoRotate} onChange={(v) => updateAnimation({ autoRotate: v })} />
                   <Slider label="Speed" value={config.animation.autoRotateSpeed} min={0} max={3} step={0.1} onChange={(v) => updateAnimation({ autoRotateSpeed: v })} unit="x" />
@@ -1690,12 +1687,12 @@ const gelMaterial = new MeshPhysicalNodeMaterial({
                 <Section title="Noise Animation" icon="🌀">
                   <Slider label="Speed" value={config.animation.noiseAnimSpeed} min={0} max={1} step={0.01} onChange={(v) => updateAnimation({ noiseAnimSpeed: v })} unit="x" tooltip="Procedural noise movement" />
                 </Section>
-              </div>
+              </>
             )}
 
             {/* Shape Tab */}
             {activeTab === 'shape' && (
-              <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4">
+              <>
                 <Section title="Geometry Type" icon="🔷" defaultOpen>
                   <Select
                     label="Shape"
@@ -1778,12 +1775,12 @@ const gelMaterial = new MeshPhysicalNodeMaterial({
                   <Toggle label="Gel Visible" value={config.shape.gelVisible} onChange={(v) => updateShape({ gelVisible: v })} />
                   <Toggle label="Wireframe" value={config.shape.wireframe} onChange={(v) => updateShape({ wireframe: v })} tooltip="Show wireframe overlay" />
                 </Section>
-              </div>
+              </>
             )}
 
             {/* Camera Tab */}
             {activeTab === 'camera' && (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              <>
                 <Section title="Position" icon="📷" defaultOpen badge="New">
                   <Slider
                     label="Distance"
@@ -1869,8 +1866,8 @@ const gelMaterial = new MeshPhysicalNodeMaterial({
                 </Section>
 
                 {/* Camera Presets */}
-                <Section title="Presets" icon="🎬" defaultOpen badge="New" className="md:col-span-2 lg:col-span-4">
-                  <div className="grid grid-cols-4 gap-2">
+                <Section title="Presets" icon="🎬" defaultOpen badge="New">
+                  <div className="grid grid-cols-2 gap-2">
                     <button
                       onClick={() => updateCamera({ distance: 5, targetY: 0, fov: 35 })}
                       className="py-2 px-3 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 hover:border-amber-500/50 rounded text-[10px] text-zinc-300 transition-all"
@@ -1897,15 +1894,15 @@ const gelMaterial = new MeshPhysicalNodeMaterial({
                     </button>
                   </div>
                   <p className="text-[9px] text-zinc-500 mt-2 text-center">
-                    Click a preset to smoothly transition the camera
+                    Click a preset to transition camera
                   </p>
                 </Section>
-              </div>
+              </>
             )}
 
             {/* Effects Tab */}
             {activeTab === 'effects' && (
-              <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4">
+              <>
                 <Section title="Tone Mapping" icon="🎞️" defaultOpen>
                   <Select
                     label="Type"
@@ -2056,12 +2053,12 @@ const gelMaterial = new MeshPhysicalNodeMaterial({
                     Upload .hdr or .exr files for realistic reflections
                   </p>
                 </Section>
-              </div>
+              </>
             )}
 
             {/* Capture Tab */}
             {activeTab === 'capture' && (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              <>
                 <Section title="Screenshot" icon="📸" defaultOpen badge="New">
                   <Select
                     label="Format"
@@ -2168,20 +2165,20 @@ const gelMaterial = new MeshPhysicalNodeMaterial({
                     </div>
                   </div>
                 </Section>
-              </div>
+              </>
             )}
 
             {/* Presets Tab */}
             {activeTab === 'presets' && (
-              <div className="space-y-4">
-                <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3">
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-2">
                   {Object.keys(PRESETS).map((presetName) => (
                     <button
                       key={presetName}
                       onClick={() => applyPreset(presetName)}
-                      className="p-4 rounded-lg bg-zinc-800/50 hover:bg-zinc-700/50 border border-zinc-700 hover:border-amber-500/50 transition-all group"
+                      className="p-3 rounded-lg bg-zinc-800/50 hover:bg-zinc-700/50 border border-zinc-700 hover:border-amber-500/50 transition-all group flex items-center gap-2"
                     >
-                      <div className="text-3xl mb-2">
+                      <div className="text-xl">
                         {presetName === 'HAL 9000' && '🔴'}
                         {presetName === 'Blue Crystal' && '💎'}
                         {presetName === 'Toxic Green' && '☢️'}
@@ -2193,9 +2190,9 @@ const gelMaterial = new MeshPhysicalNodeMaterial({
                         {presetName === 'Lava Core' && '🌋'}
                         {presetName === 'Frozen' && '❄️'}
                       </div>
-                      <div className="text-[11px] font-medium text-zinc-300 group-hover:text-amber-400 transition-colors">
+                      <span className="text-[10px] font-medium text-zinc-300 group-hover:text-amber-400 transition-colors">
                         {presetName}
-                      </div>
+                      </span>
                     </button>
                   ))}
                 </div>
@@ -2207,7 +2204,7 @@ const gelMaterial = new MeshPhysicalNodeMaterial({
 
             {/* AI Tab */}
             {activeTab === 'ai' && (
-              <div className="max-w-2xl mx-auto">
+              <div>
                 <AIPanel
                   config={config}
                   onApplySuggestion={(suggestion) => {
@@ -2232,7 +2229,7 @@ const gelMaterial = new MeshPhysicalNodeMaterial({
 
             {/* Info Tab - Changelog */}
             {activeTab === 'info' && (
-              <div className="max-w-4xl mx-auto space-y-4">
+              <div className="space-y-3">
                 {/* Header */}
                 <div className="text-center pb-4 border-b border-zinc-800">
                   <h2 className="text-lg font-bold text-zinc-200">Lithosphere Shader Studio</h2>
@@ -2312,16 +2309,15 @@ const gelMaterial = new MeshPhysicalNodeMaterial({
           </div>
         </div>
 
-        {/* Footer with keyboard shortcuts hint */}
-        <div className="bg-zinc-900/90 border-t border-zinc-800 px-4 py-1.5">
-          <div className="max-w-7xl mx-auto flex items-center justify-between text-[9px] text-zinc-500">
-            <div className="flex items-center gap-4">
-              <span><kbd className="px-1 py-0.5 bg-zinc-800 rounded">~</kbd> Toggle Panel</span>
-              <span><kbd className="px-1 py-0.5 bg-zinc-800 rounded">1-9</kbd> Switch Tabs</span>
+          {/* Footer */}
+          <div className="flex-shrink-0 bg-zinc-900/90 border-t border-zinc-800 px-3 py-2">
+            <div className="flex flex-wrap items-center justify-center gap-2 text-[8px] text-zinc-500">
+              <span><kbd className="px-1 py-0.5 bg-zinc-800 rounded">~</kbd> Toggle</span>
+              <span><kbd className="px-1 py-0.5 bg-zinc-800 rounded">1-9</kbd> Tabs</span>
               <span><kbd className="px-1 py-0.5 bg-zinc-800 rounded">Esc</kbd> Close</span>
             </div>
-            <div>
-              <span>Lithosphere Shader Studio {VERSION_SHORT}</span>
+            <div className="text-center text-[8px] text-zinc-600 mt-1">
+              {VERSION_SHORT}
             </div>
           </div>
         </div>
