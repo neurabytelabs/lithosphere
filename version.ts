@@ -11,9 +11,9 @@
  * - PATCH: Bug fixes, small improvements
  */
 
-export const VERSION = '3.6.0';
-export const VERSION_SHORT = 'v3.6';
-export const VERSION_NAME = 'Right-Side Panel';
+export const VERSION = '4.0.0-rc1';
+export const VERSION_SHORT = 'v4.0.0-RC1';
+export const VERSION_NAME = 'Multiverse';
 export const BUILD_DATE = '2025-12-19';
 
 // Version history for changelog display
@@ -25,6 +25,54 @@ export interface VersionEntry {
 }
 
 export const VERSION_HISTORY: VersionEntry[] = [
+  {
+    version: '4.0.0-rc1',
+    date: '2025-12-19',
+    name: 'Multiverse',
+    features: [
+      { emoji: '🌐', title: 'Multi-Core System', description: 'Create and manage up to 10 core instances' },
+      { emoji: '💎', title: 'Multi-Gel System', description: 'Create and manage up to 10 gel instances' },
+      { emoji: '📐', title: 'Instance Transforms', description: 'Position, rotation, and scale for each instance' },
+      { emoji: '🔗', title: 'Core-Gel Linking', description: 'Gels follow linked core position automatically' },
+      { emoji: '✨', title: 'Arrangement Presets', description: '6 presets: Single, Binary, Orbital, Triangle, Stack, Cluster' },
+      { emoji: '📋', title: 'Duplicate Instances', description: 'Clone any core or gel with one click' },
+      { emoji: '🎭', title: 'Animation Sync', description: 'Synchronized, independent, or staggered modes' },
+      { emoji: '👁️', title: 'Instance Visibility', description: 'Toggle each instance on/off independently' },
+    ],
+  },
+  {
+    version: '3.7.2',
+    date: '2025-12-19',
+    name: 'Master Light Control',
+    features: [
+      { emoji: '💡', title: '9 Light Toggles', description: 'On/off for every light: Key, Fill, Top, Rim 1&2, HAL Core/Back, Red Rim, Ambient' },
+      { emoji: '🎭', title: 'Shader Effect Toggles', description: 'Fresnel, Specular, Red Bleed, Sheen, Env Reflection' },
+      { emoji: '🔥', title: 'Hidden Lights Exposed', description: 'Top Light, Rim Light 2, HAL Back Light, Red Rim Light now controllable' },
+      { emoji: '🎮', title: 'Full Control', description: 'Every light and shader effect can be individually toggled' },
+    ],
+  },
+  {
+    version: '3.7.1',
+    date: '2025-12-19',
+    name: 'Full Glare Control',
+    features: [
+      { emoji: '🔆', title: 'Fresnel Control', description: 'Adjustable fresnel power & intensity for edge glow' },
+      { emoji: '✨', title: 'Specular Control', description: 'Fine-tune specular power & multiplier for highlights' },
+      { emoji: '🎛️', title: 'Complete Light Mastery', description: 'All shader lighting now fully controllable' },
+      { emoji: '🎲', title: 'Smart Random', description: 'Light random includes all glare/fresnel params' },
+    ],
+  },
+  {
+    version: '3.7.0',
+    date: '2025-12-19',
+    name: 'Enhanced Controls',
+    features: [
+      { emoji: '🎚️', title: 'Custom Scrollbar', description: 'Elegant thin scrollbar with hover effects' },
+      { emoji: '🎲', title: 'Section Random', description: 'Per-tab randomize buttons (Core, Gel, Light, etc.)' },
+      { emoji: '✨', title: 'Reflections & Glare', description: 'New Light tab section for specular/reflection control' },
+      { emoji: '💡', title: 'Emission Control', description: 'Core emissive, metalness, roughness in Light tab' },
+    ],
+  },
   {
     version: '3.6.0',
     date: '2025-12-19',

@@ -14,7 +14,19 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 // @ts-ignore
 import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
-import DebugPanel, { ShaderConfig, DEFAULT_CONFIG, MeshSource } from './DebugPanel';
+import DebugPanel, {
+  ShaderConfig,
+  DEFAULT_CONFIG,
+  MeshSource,
+  CoreInstance,
+  GelInstance,
+  InstanceTransform,
+  CoreConfig,
+  GelConfig,
+  migrateConfigToMultiInstance,
+  getSelectedCore,
+  getSelectedGel,
+} from './DebugPanel';
 
 const {
   positionLocal,
@@ -64,57 +76,93 @@ interface CameraAnimationState {
   duration: number;
 }
 
+// Per-instance uniforms for animation
+interface InstanceUniforms {
+  uTime: any;
+  uPulseSpeed: any;
+  uPulseIntensity: any;
+  uNoiseScale: any;
+  uNoiseIntensity: any;
+  uCoreColorDeep: any;
+  uCoreColorMid: any;
+  uCoreColorGlow: any;
+  uCoreColorHot: any;
+  uEmissiveIntensity: any;
+  uBreatheSpeed: any;
+  uBreatheIntensity: any;
+  uWobbleSpeed: any;
+  uWobbleIntensity: any;
+  uNoiseAnimSpeed: any;
+}
+
 interface SceneRefs {
+  // Legacy single-instance refs (for backwards compatibility)
   coreMesh: THREE.Mesh | null;
   gelMesh: THREE.Mesh | null;
   coreMaterial: any;
   gelMaterial: any;
   coreGeometry: THREE.BufferGeometry | null;
   gelGeometry: THREE.BufferGeometry | null;
+
+  // Multi-instance Maps (v4.0)
+  coreMeshes: Map<string, THREE.Mesh>;
+  gelMeshes: Map<string, THREE.Mesh>;
+  coreMaterials: Map<string, any>;
+  gelMaterials: Map<string, any>;
+  coreGeometries: Map<string, THREE.BufferGeometry>;
+  gelGeometries: Map<string, THREE.BufferGeometry>;
+  instanceUniforms: Map<string, InstanceUniforms>;
+
+  // Lights
   keyLight: THREE.DirectionalLight | null;
   fillLight: THREE.DirectionalLight | null;
+  topLight: THREE.DirectionalLight | null;
   rimLight: THREE.DirectionalLight | null;
+  rimLight2: THREE.DirectionalLight | null;
   halCoreLight: THREE.PointLight | null;
   halBackLight: THREE.PointLight | null;
+  redRimLight: THREE.PointLight | null;
   ambientLight: THREE.AmbientLight | null;
+
+  // Scene components
   controls: OrbitControls | null;
   scene: THREE.Scene | null;
   camera: THREE.PerspectiveCamera | null;
   renderer: any;
+
   // Environment
   envMap: THREE.Texture | null;
+
   // Camera animation
   cameraAnimation: CameraAnimationState | null;
-  panelOpenDistance: number; // Distance when panel is open
-  panelClosedDistance: number; // Distance when panel is closed
+  panelOpenDistance: number;
+  panelClosedDistance: number;
+
   // Post-processing
   postProcessing: any;
   bloomPass: any;
   rgbShiftPass: any;
   vignettePass: any;
-  uniforms: {
-    uTime: any;
-    uPulseSpeed: any;
-    uPulseIntensity: any;
-    uNoiseScale: any;
-    uNoiseIntensity: any;
-    uCoreColorDeep: any;
-    uCoreColorMid: any;
-    uCoreColorGlow: any;
-    uCoreColorHot: any;
-    uEmissiveIntensity: any;
-    uBreatheSpeed: any;
-    uBreatheIntensity: any;
-    uWobbleSpeed: any;
-    uWobbleIntensity: any;
-    uNoiseAnimSpeed: any;
-  } | null;
+
+  // Legacy single-instance uniforms (will sync with primary instance)
+  uniforms: InstanceUniforms | null;
+
   // Animation state
   animationConfig: {
     meshRotationSpeed: number;
     syncBreathing: boolean;
     dynamicLighting: boolean;
     orbitSpeed: number;
+  };
+
+  // Current lighting config (for animation loop access)
+  lightingConfig: {
+    halCoreLightEnabled: boolean;
+    halCoreLightIntensity: number;
+    halBackLightEnabled: boolean;
+    halBackLightIntensity: number;
+    redRimLightEnabled: boolean;
+    redRimLightIntensity: number;
   };
 }
 
@@ -123,43 +171,77 @@ const RockScene: React.FC = () => {
   const [loadProgress, setLoadProgress] = useState(0);
   const [isLoaded, setIsLoaded] = useState(false);
   const [config, setConfig] = useState<ShaderConfig>(DEFAULT_CONFIG);
+  const configRef = useRef<ShaderConfig>(config); // Ref for animation loop access
   const gltfLoaderRef = useRef<any>(null);
   const rgbeLoaderRef = useRef<any>(null);
   const rendererRef = useRef<any>(null);
   const sceneRefs = useRef<SceneRefs>({
+    // Legacy single-instance refs
     coreMesh: null,
     gelMesh: null,
     coreMaterial: null,
     gelMaterial: null,
     coreGeometry: null,
     gelGeometry: null,
+
+    // Multi-instance Maps (v4.0)
+    coreMeshes: new Map(),
+    gelMeshes: new Map(),
+    coreMaterials: new Map(),
+    gelMaterials: new Map(),
+    coreGeometries: new Map(),
+    gelGeometries: new Map(),
+    instanceUniforms: new Map(),
+
+    // Lights
     keyLight: null,
     fillLight: null,
+    topLight: null,
     rimLight: null,
+    rimLight2: null,
     halCoreLight: null,
     halBackLight: null,
+    redRimLight: null,
     ambientLight: null,
+
+    // Scene components
     controls: null,
     scene: null,
     camera: null,
     renderer: null,
+
     // Environment
     envMap: null,
+
     // Camera animation
     cameraAnimation: null,
-    panelOpenDistance: DEFAULT_CONFIG.camera.distance + 3, // +3 units when panel opens
+    panelOpenDistance: DEFAULT_CONFIG.camera.distance + 3,
     panelClosedDistance: DEFAULT_CONFIG.camera.distance,
+
     // Post-processing
     postProcessing: null,
     bloomPass: null,
     rgbShiftPass: null,
     vignettePass: null,
+
+    // Legacy uniforms
     uniforms: null,
+
     animationConfig: {
       meshRotationSpeed: DEFAULT_CONFIG.animation.meshRotationSpeed,
       syncBreathing: DEFAULT_CONFIG.animation.syncBreathing,
       dynamicLighting: DEFAULT_CONFIG.lighting.dynamicLighting,
       orbitSpeed: DEFAULT_CONFIG.lighting.orbitSpeed,
+    },
+
+    // Lighting config for animation loop
+    lightingConfig: {
+      halCoreLightEnabled: DEFAULT_CONFIG.lighting.halCoreLightEnabled,
+      halCoreLightIntensity: DEFAULT_CONFIG.lighting.halCoreLightIntensity,
+      halBackLightEnabled: DEFAULT_CONFIG.lighting.halBackLightEnabled,
+      halBackLightIntensity: DEFAULT_CONFIG.lighting.halBackLightIntensity,
+      redRimLightEnabled: DEFAULT_CONFIG.lighting.redRimLightEnabled,
+      redRimLightIntensity: DEFAULT_CONFIG.lighting.redRimLightIntensity,
     },
   });
 
@@ -225,31 +307,49 @@ const RockScene: React.FC = () => {
         : 0;
     }
 
-    // Update lighting positions
+    // Update lighting (v3.7.2 - all lights now have on/off toggles)
     if (refs.keyLight) {
-      refs.keyLight.intensity = newConfig.lighting.keyLightIntensity;
+      refs.keyLight.intensity = newConfig.lighting.keyLightEnabled ? newConfig.lighting.keyLightIntensity : 0;
       refs.keyLight.color.setRGB(...newConfig.lighting.keyLightColor);
-      refs.keyLight.position.set(
-        newConfig.lighting.keyLightX,
-        newConfig.lighting.keyLightY,
-        newConfig.lighting.keyLightZ
-      );
+      refs.keyLight.position.set(newConfig.lighting.keyLightX, newConfig.lighting.keyLightY, newConfig.lighting.keyLightZ);
     }
     if (refs.fillLight) {
-      refs.fillLight.intensity = newConfig.lighting.fillLightIntensity;
+      refs.fillLight.intensity = newConfig.lighting.fillLightEnabled ? newConfig.lighting.fillLightIntensity : 0;
       refs.fillLight.color.setRGB(...newConfig.lighting.fillLightColor);
     }
+    if (refs.topLight) {
+      refs.topLight.intensity = newConfig.lighting.topLightEnabled ? newConfig.lighting.topLightIntensity : 0;
+    }
     if (refs.rimLight) {
-      refs.rimLight.intensity = newConfig.lighting.rimLightIntensity;
+      refs.rimLight.intensity = newConfig.lighting.rimLightEnabled ? newConfig.lighting.rimLightIntensity : 0;
+    }
+    if (refs.rimLight2) {
+      refs.rimLight2.intensity = newConfig.lighting.rimLight2Enabled ? newConfig.lighting.rimLight2Intensity : 0;
     }
     if (refs.halCoreLight) {
-      refs.halCoreLight.intensity = newConfig.lighting.halCoreLightIntensity;
+      refs.halCoreLight.intensity = newConfig.lighting.halCoreLightEnabled ? newConfig.lighting.halCoreLightIntensity : 0;
       refs.halCoreLight.color.setRGB(...newConfig.lighting.halCoreLightColor);
       refs.halCoreLight.distance = newConfig.lighting.halCoreLightDistance;
     }
-    if (refs.ambientLight) {
-      refs.ambientLight.intensity = newConfig.lighting.ambientIntensity;
+    if (refs.halBackLight) {
+      refs.halBackLight.intensity = newConfig.lighting.halBackLightEnabled ? newConfig.lighting.halBackLightIntensity : 0;
     }
+    if (refs.redRimLight) {
+      refs.redRimLight.intensity = newConfig.lighting.redRimLightEnabled ? newConfig.lighting.redRimLightIntensity : 0;
+    }
+    if (refs.ambientLight) {
+      refs.ambientLight.intensity = newConfig.lighting.ambientEnabled ? newConfig.lighting.ambientIntensity : 0;
+    }
+
+    // Update lightingConfig for animation loop access (v4.0)
+    refs.lightingConfig = {
+      halCoreLightEnabled: newConfig.lighting.halCoreLightEnabled,
+      halCoreLightIntensity: newConfig.lighting.halCoreLightIntensity,
+      halBackLightEnabled: newConfig.lighting.halBackLightEnabled,
+      halBackLightIntensity: newConfig.lighting.halBackLightIntensity,
+      redRimLightEnabled: newConfig.lighting.redRimLightEnabled,
+      redRimLightIntensity: newConfig.lighting.redRimLightIntensity,
+    };
 
     // Update gel material properties
     if (refs.gelMaterial) {
@@ -340,10 +440,154 @@ const RockScene: React.FC = () => {
       }
       refs.envMap = null;
     }
+
+    // ============================================
+    // === MULTI-INSTANCE TRANSFORMS (v4.0) ===
+    // ============================================
+
+    // Create new core meshes if they don't exist (v4.0 - mesh cloning)
+    console.log('[v4.0] updateSceneFromConfig - cores:', newConfig.cores.length, 'gels:', newConfig.gels.length);
+    console.log('[v4.0] refs.coreMesh:', !!refs.coreMesh, 'refs.scene:', !!refs.scene);
+    console.log('[v4.0] coreMeshes Map size:', refs.coreMeshes.size);
+
+    newConfig.cores.forEach((coreInstance) => {
+      const hasInMap = refs.coreMeshes.has(coreInstance.id);
+      console.log(`[v4.0] Core ${coreInstance.id}: inMap=${hasInMap}, coreMesh=${!!refs.coreMesh}, scene=${!!refs.scene}`);
+
+      if (!hasInMap && refs.coreMesh && refs.scene) {
+        // Clone the primary core mesh for new instances
+        const newMesh = refs.coreMesh.clone();
+        newMesh.material = refs.coreMaterial; // Share material for performance
+        refs.scene.add(newMesh);
+        refs.coreMeshes.set(coreInstance.id, newMesh);
+        console.log(`[v4.0] ✅ Created new core mesh: ${coreInstance.name} (${coreInstance.id})`);
+      }
+    });
+
+    // Create new gel meshes if they don't exist
+    newConfig.gels.forEach((gelInstance) => {
+      const hasInMap = refs.gelMeshes.has(gelInstance.id);
+      console.log(`[v4.0] Gel ${gelInstance.id}: inMap=${hasInMap}, gelMesh=${!!refs.gelMesh}, scene=${!!refs.scene}`);
+
+      if (!hasInMap && refs.gelMesh && refs.scene) {
+        // Clone the primary gel mesh for new instances
+        const newMesh = refs.gelMesh.clone();
+        newMesh.material = refs.gelMaterial; // Share material for performance
+        refs.scene.add(newMesh);
+        refs.gelMeshes.set(gelInstance.id, newMesh);
+        console.log(`[v4.0] ✅ Created new gel mesh: ${gelInstance.name} (${gelInstance.id})`);
+      }
+    });
+
+    // Remove meshes for deleted instances
+    refs.coreMeshes.forEach((mesh, id) => {
+      if (!newConfig.cores.find(c => c.id === id)) {
+        refs.scene?.remove(mesh);
+        mesh.geometry?.dispose();
+        refs.coreMeshes.delete(id);
+        console.log(`[v4.0] Removed core mesh: ${id}`);
+      }
+    });
+
+    refs.gelMeshes.forEach((mesh, id) => {
+      if (!newConfig.gels.find(g => g.id === id)) {
+        refs.scene?.remove(mesh);
+        mesh.geometry?.dispose();
+        refs.gelMeshes.delete(id);
+        console.log(`[v4.0] Removed gel mesh: ${id}`);
+      }
+    });
+
+    // Update core instance transforms and visibility
+    newConfig.cores.forEach((coreInstance) => {
+      const mesh = refs.coreMeshes.get(coreInstance.id);
+      if (mesh) {
+        // Apply transform
+        mesh.position.set(...coreInstance.transform.position);
+        mesh.rotation.set(...coreInstance.transform.rotation);
+        // Apply scale immediately (animation loop will use baseScale for breathing)
+        const scale = coreInstance.transform.scale[0];
+        mesh.scale.setScalar(scale);
+        (mesh.userData as any).baseScale = scale;
+
+        // Apply visibility (combine instance enabled with global coreVisible)
+        mesh.visible = coreInstance.enabled && newConfig.shape.coreVisible;
+        console.log(`[v4.0] Core ${coreInstance.id}: pos=${mesh.position.toArray()}, scale=${scale}, visible=${mesh.visible}`);
+      } else {
+        console.log(`[v4.0] Core ${coreInstance.id}: mesh NOT FOUND in Map!`);
+      }
+    });
+
+    // Update gel instance transforms and visibility
+    newConfig.gels.forEach((gelInstance) => {
+      const mesh = refs.gelMeshes.get(gelInstance.id);
+      if (mesh) {
+        // If gel has a parent core, offset from parent position
+        let basePosition: [number, number, number] = [...gelInstance.transform.position];
+
+        if (gelInstance.parentCoreId) {
+          const parentCore = newConfig.cores.find(c => c.id === gelInstance.parentCoreId);
+          if (parentCore) {
+            basePosition = [
+              parentCore.transform.position[0] + gelInstance.transform.position[0],
+              parentCore.transform.position[1] + gelInstance.transform.position[1],
+              parentCore.transform.position[2] + gelInstance.transform.position[2],
+            ];
+          }
+        }
+
+        // Apply transform
+        mesh.position.set(...basePosition);
+        mesh.rotation.set(...gelInstance.transform.rotation);
+        // Apply scale immediately (animation loop will use baseScale for breathing)
+        const scale = gelInstance.transform.scale[0];
+        mesh.scale.setScalar(scale);
+        (mesh.userData as any).baseScale = scale;
+
+        // Apply visibility (combine instance enabled with global gelVisible)
+        mesh.visible = gelInstance.enabled && newConfig.shape.gelVisible;
+        console.log(`[v4.0] Gel ${gelInstance.id}: pos=${mesh.position.toArray()}, scale=${scale}, visible=${mesh.visible}`);
+      } else {
+        console.log(`[v4.0] Gel ${gelInstance.id}: mesh NOT FOUND in Map!`);
+      }
+    });
+
+    // Sync legacy refs with primary instance for backwards compatibility
+    if (newConfig.cores.length > 0) {
+      const primaryCore = newConfig.cores[0];
+      if (refs.coreMesh) {
+        refs.coreMesh.position.set(...primaryCore.transform.position);
+        (refs.coreMesh.userData as any).baseScale = primaryCore.transform.scale[0];
+        refs.coreMesh.visible = primaryCore.enabled && newConfig.shape.coreVisible;
+      }
+    }
+
+    if (newConfig.gels.length > 0) {
+      const primaryGel = newConfig.gels[0];
+      let gelPos: [number, number, number] = [...primaryGel.transform.position];
+
+      if (primaryGel.parentCoreId && newConfig.cores.length > 0) {
+        const parentCore = newConfig.cores.find(c => c.id === primaryGel.parentCoreId);
+        if (parentCore) {
+          gelPos = [
+            parentCore.transform.position[0] + primaryGel.transform.position[0],
+            parentCore.transform.position[1] + primaryGel.transform.position[1],
+            parentCore.transform.position[2] + primaryGel.transform.position[2],
+          ];
+        }
+      }
+
+      if (refs.gelMesh) {
+        refs.gelMesh.position.set(...gelPos);
+        (refs.gelMesh.userData as any).baseScale = primaryGel.transform.scale[0];
+        refs.gelMesh.visible = primaryGel.enabled && newConfig.shape.gelVisible;
+      }
+    }
   }, []);
 
   const handleConfigChange = useCallback((newConfig: ShaderConfig) => {
     setConfig(newConfig);
+    configRef.current = newConfig; // Update ref for animation loop
     updateSceneFromConfig(newConfig);
   }, [updateSceneFromConfig]);
 
@@ -659,6 +903,31 @@ const RockScene: React.FC = () => {
       scene.add(coreMesh);
       sceneRefs.current.coreMesh = coreMesh;
 
+      // Store in multi-instance Maps (v4.0)
+      const primaryCoreId = config.cores[0]?.id || 'core-primary';
+      sceneRefs.current.coreMeshes.set(primaryCoreId, coreMesh);
+      sceneRefs.current.coreMaterials.set(primaryCoreId, coreMaterial);
+      sceneRefs.current.coreGeometries.set(primaryCoreId, coreGeometry);
+
+      // Store uniforms for this instance
+      sceneRefs.current.instanceUniforms.set(primaryCoreId, {
+        uTime,
+        uPulseSpeed,
+        uPulseIntensity,
+        uNoiseScale,
+        uNoiseIntensity,
+        uCoreColorDeep,
+        uCoreColorMid,
+        uCoreColorGlow,
+        uCoreColorHot,
+        uEmissiveIntensity,
+        uBreatheSpeed,
+        uBreatheIntensity,
+        uWobbleSpeed,
+        uWobbleIntensity,
+        uNoiseAnimSpeed,
+      });
+
       // ============================================
       // === OUTER GEL SHELL ===
       // ============================================
@@ -699,11 +968,14 @@ const RockScene: React.FC = () => {
       const gelEdge = vec3(1.0, 1.0, 1.0);
 
       const coreInfluence = pow(float(1).sub(gelNdotV), float(1.2));
-      const redBleed = coreColorGlowVec.mul(coreInfluence.mul(config.gel.redBleedIntensity).mul(halIntensity));
+      // Red Bleed - controllable (v3.7.2)
+      const redBleedAmount = config.gel.redBleedEnabled ? config.gel.redBleedIntensity : 0;
+      const redBleed = coreColorGlowVec.mul(coreInfluence.mul(redBleedAmount).mul(halIntensity));
 
       const gelBase = mix(gelClear, gelTint, gelDepth.mul(0.3));
       const gelWithEdge = mix(gelBase, gelEdge, pow(gelFresnel, float(2.5)));
 
+      // Environment Reflection - controllable (v3.7.2)
       const envUp = clamp(normalWorld.y.mul(0.5).add(0.5), float(0), float(1));
       const envSide = clamp(normalWorld.x.abs().mul(0.5), float(0), float(1));
 
@@ -714,9 +986,14 @@ const RockScene: React.FC = () => {
       const envReflection = mix(groundReflect, skyReflect, envUp);
       const fullEnvReflect = mix(envReflection, sideReflect, envSide.mul(0.5));
 
-      const fresnelReflect = pow(gelFresnel, float(1.8));
-      const reflection = fullEnvReflect.mul(fresnelReflect.mul(0.7));
-      const specular = vec3(1.0, 1.0, 1.0).mul(pow(gelFresnel, float(5.0)).mul(0.6));
+      // Fresnel & Glare - fully controllable (v3.7.1 + v3.7.2 toggles)
+      const fresnelReflect = pow(gelFresnel, float(config.gel.fresnelPower));
+      const fresnelMult = config.gel.fresnelEnabled ? config.gel.fresnelIntensity : 0;
+      const reflection = config.gel.envReflectionEnabled
+        ? fullEnvReflect.mul(fresnelReflect.mul(fresnelMult))
+        : vec3(0, 0, 0);
+      const specularMult = config.gel.specularEnabled ? config.gel.specularMultiplier : 0;
+      const specular = vec3(1.0, 1.0, 1.0).mul(pow(gelFresnel, float(config.gel.specularPower)).mul(specularMult));
 
       const finalGelColor = gelWithEdge.add(reflection).add(redBleed).add(specular);
 
@@ -732,7 +1009,7 @@ const RockScene: React.FC = () => {
         ior: config.gel.ior,
         clearcoat: config.gel.clearcoat,
         clearcoatRoughness: config.gel.clearcoatRoughness,
-        sheen: 0.15,
+        sheen: config.gel.sheenEnabled ? 0.15 : 0,
         sheenRoughness: 0.1,
         sheenColor: new THREE.Color(0.8, 0.85, 1.0),
         attenuationColor: new THREE.Color(...config.gel.attenuationColor),
@@ -749,51 +1026,69 @@ const RockScene: React.FC = () => {
       scene.add(gelMesh);
       sceneRefs.current.gelMesh = gelMesh;
 
+      // Store in multi-instance Maps (v4.0)
+      const primaryGelId = config.gels[0]?.id || 'gel-primary';
+      sceneRefs.current.gelMeshes.set(primaryGelId, gelMesh);
+      sceneRefs.current.gelMaterials.set(primaryGelId, gelMaterial);
+      sceneRefs.current.gelGeometries.set(primaryGelId, gelGeometry);
+
       // ============================================
       // === CINEMATIC LIGHTING ===
       // ============================================
 
-      const keyLight = new THREE.DirectionalLight('#ffffff', config.lighting.keyLightIntensity);
+      // Key Light
+      const keyLight = new THREE.DirectionalLight('#ffffff', config.lighting.keyLightEnabled ? config.lighting.keyLightIntensity : 0);
       keyLight.color.setRGB(...config.lighting.keyLightColor);
       keyLight.position.set(config.lighting.keyLightX, config.lighting.keyLightY, config.lighting.keyLightZ);
       scene.add(keyLight);
       sceneRefs.current.keyLight = keyLight;
 
-      const fillLight = new THREE.DirectionalLight('#a0c8ff', config.lighting.fillLightIntensity);
+      // Fill Light
+      const fillLight = new THREE.DirectionalLight('#a0c8ff', config.lighting.fillLightEnabled ? config.lighting.fillLightIntensity : 0);
       fillLight.color.setRGB(...config.lighting.fillLightColor);
       fillLight.position.set(-5, 3, -4);
       scene.add(fillLight);
       sceneRefs.current.fillLight = fillLight;
 
-      const topLight = new THREE.DirectionalLight('#ffffff', 2.0);
+      // Top Light (v3.7.2 - now controllable)
+      const topLight = new THREE.DirectionalLight('#ffffff', config.lighting.topLightEnabled ? config.lighting.topLightIntensity : 0);
       topLight.position.set(0, 8, 3);
       scene.add(topLight);
+      sceneRefs.current.topLight = topLight;
 
-      const rimLight = new THREE.DirectionalLight('#ffffff', config.lighting.rimLightIntensity);
+      // Rim Light
+      const rimLight = new THREE.DirectionalLight('#ffffff', config.lighting.rimLightEnabled ? config.lighting.rimLightIntensity : 0);
       rimLight.position.set(-4, 2, -6);
       scene.add(rimLight);
       sceneRefs.current.rimLight = rimLight;
 
-      const rimLight2 = new THREE.DirectionalLight('#e0e8ff', 2.0);
+      // Rim Light 2 (v3.7.2 - now controllable)
+      const rimLight2 = new THREE.DirectionalLight('#e0e8ff', config.lighting.rimLight2Enabled ? config.lighting.rimLight2Intensity : 0);
       rimLight2.position.set(4, 1, -5);
       scene.add(rimLight2);
+      sceneRefs.current.rimLight2 = rimLight2;
 
-      const halCoreLight = new THREE.PointLight('#ff0000', config.lighting.halCoreLightIntensity, config.lighting.halCoreLightDistance);
+      // HAL Core Light
+      const halCoreLight = new THREE.PointLight('#ff0000', config.lighting.halCoreLightEnabled ? config.lighting.halCoreLightIntensity : 0, config.lighting.halCoreLightDistance);
       halCoreLight.color.setRGB(...config.lighting.halCoreLightColor);
       halCoreLight.position.set(0, 0, 0);
       scene.add(halCoreLight);
       sceneRefs.current.halCoreLight = halCoreLight;
 
-      const halBackLight = new THREE.PointLight('#ff2200', 3.0, 5);
+      // HAL Back Light (v3.7.2 - now controllable)
+      const halBackLight = new THREE.PointLight('#ff2200', config.lighting.halBackLightEnabled ? config.lighting.halBackLightIntensity : 0, 5);
       halBackLight.position.set(0, 0, -1.5);
       scene.add(halBackLight);
       sceneRefs.current.halBackLight = halBackLight;
 
-      const redRimLight = new THREE.PointLight('#ff1100', 2.0, 3);
+      // Red Rim Light (v3.7.2 - now controllable)
+      const redRimLight = new THREE.PointLight('#ff1100', config.lighting.redRimLightEnabled ? config.lighting.redRimLightIntensity : 0, 3);
       redRimLight.position.set(0, -0.5, 0.5);
       scene.add(redRimLight);
+      sceneRefs.current.redRimLight = redRimLight;
 
-      const ambientLight = new THREE.AmbientLight('#050508', config.lighting.ambientIntensity);
+      // Ambient Light
+      const ambientLight = new THREE.AmbientLight('#050508', config.lighting.ambientEnabled ? config.lighting.ambientIntensity : 0);
       scene.add(ambientLight);
       sceneRefs.current.ambientLight = ambientLight;
 
@@ -965,13 +1260,33 @@ const RockScene: React.FC = () => {
         // Breathing with configurable parameters
         const breatheSpeed = uniforms?.uBreatheSpeed?.value || 0.8;
         const breatheIntensity = uniforms?.uBreatheIntensity?.value || 0.02;
-        const breatheCore = 1.0 + Math.sin(elapsed * breatheSpeed) * breatheIntensity;
-        const breatheGel = animConfig.syncBreathing
-          ? 1.0 + Math.sin(elapsed * breatheSpeed) * (breatheIntensity * 0.75)
-          : 1.0 + Math.sin(elapsed * breatheSpeed + 0.15) * (breatheIntensity * 0.75);
+        const breatheFactor = Math.sin(elapsed * breatheSpeed) * breatheIntensity;
+
+        // Get base scale from userData (set by transform controls) or default to 1
+        const coreBaseScale = (coreMesh.userData as any).baseScale || 1;
+        const gelBaseScale = (gelMesh.userData as any).baseScale || 1;
+
+        const breatheCore = coreBaseScale * (1.0 + breatheFactor);
+        const breatheGel = gelBaseScale * (animConfig.syncBreathing
+          ? (1.0 + breatheFactor * 0.75)
+          : (1.0 + Math.sin(elapsed * breatheSpeed + 0.15) * breatheIntensity * 0.75));
 
         coreMesh.scale.setScalar(breatheCore);
         gelMesh.scale.setScalar(breatheGel);
+
+        // Update all instances in Maps (v4.0) - apply breathing to all
+        sceneRefs.current.coreMeshes.forEach((mesh, id) => {
+          const baseScale = (mesh.userData as any).baseScale || 1;
+          mesh.scale.setScalar(baseScale * (1.0 + breatheFactor));
+        });
+
+        sceneRefs.current.gelMeshes.forEach((mesh, id) => {
+          const baseScale = (mesh.userData as any).baseScale || 1;
+          const gelBreatheFactor = animConfig.syncBreathing
+            ? breatheFactor * 0.75
+            : Math.sin(elapsed * breatheSpeed + 0.15) * breatheIntensity * 0.75;
+          mesh.scale.setScalar(baseScale * (1.0 + gelBreatheFactor));
+        });
 
         // Dynamic lighting (can be toggled)
         if (animConfig.dynamicLighting) {
@@ -983,13 +1298,33 @@ const RockScene: React.FC = () => {
           rimLight2.position.z = Math.cos(lightAngle + Math.PI) * 5;
         }
 
+        // HAL light pulsing animation (respects enabled state from sceneRefs.lightingConfig)
         const halLightPulse = Math.sin(elapsed * 0.8) * 0.5 + 1.0;
-        halCoreLight.intensity = sceneRefs.current.halCoreLight?.intensity || 5.0;
-        halBackLight.intensity = 3.0 * halLightPulse;
-        redRimLight.intensity = 2.0 * halLightPulse;
+        const lc = sceneRefs.current.lightingConfig;
+
+        // Only pulse if enabled - check current config state via sceneRefs
+        if (lc.halCoreLightEnabled) {
+          halCoreLight.intensity = lc.halCoreLightIntensity;
+        } else {
+          halCoreLight.intensity = 0;
+        }
+
+        if (lc.halBackLightEnabled) {
+          halBackLight.intensity = lc.halBackLightIntensity * halLightPulse;
+        } else {
+          halBackLight.intensity = 0;
+        }
+
+        if (lc.redRimLightEnabled) {
+          redRimLight.intensity = lc.redRimLightIntensity * halLightPulse;
+        } else {
+          redRimLight.intensity = 0;
+        }
 
         const redShift = Math.sin(elapsed * 0.4) * 0.05;
-        halBackLight.color.setRGB(1.0, 0.1 + redShift, 0);
+        if (lc.halBackLightEnabled) {
+          halBackLight.color.setRGB(1.0, 0.1 + redShift, 0);
+        }
 
         // Use post-processing if available, otherwise direct render
         if (postProcessing) {
@@ -1017,10 +1352,28 @@ const RockScene: React.FC = () => {
           mountRef.current.removeChild(renderer.domElement);
         }
         controls.dispose();
+
+        // Dispose legacy refs
         coreGeometry.dispose();
         gelGeometry.dispose();
         coreMaterial.dispose();
         gelMaterial.dispose();
+
+        // Dispose all multi-instance Maps (v4.0)
+        sceneRefs.current.coreGeometries.forEach(geo => geo.dispose());
+        sceneRefs.current.gelGeometries.forEach(geo => geo.dispose());
+        sceneRefs.current.coreMaterials.forEach(mat => mat.dispose());
+        sceneRefs.current.gelMaterials.forEach(mat => mat.dispose());
+
+        // Clear Maps
+        sceneRefs.current.coreMeshes.clear();
+        sceneRefs.current.gelMeshes.clear();
+        sceneRefs.current.coreGeometries.clear();
+        sceneRefs.current.gelGeometries.clear();
+        sceneRefs.current.coreMaterials.clear();
+        sceneRefs.current.gelMaterials.clear();
+        sceneRefs.current.instanceUniforms.clear();
+
         renderer?.dispose();
       };
     };

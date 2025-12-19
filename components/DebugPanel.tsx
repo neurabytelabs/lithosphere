@@ -38,21 +38,55 @@ export interface GelConfig {
   redBleedIntensity: number;
   specularIntensity: number;
   dispersion: number;
+  // Fresnel & Glare Control (v3.7.1)
+  fresnelPower: number;
+  fresnelIntensity: number;
+  specularPower: number;
+  specularMultiplier: number;
+  // Shader Effect Toggles (v3.7.2)
+  fresnelEnabled: boolean;
+  specularEnabled: boolean;
+  redBleedEnabled: boolean;
+  sheenEnabled: boolean;
+  envReflectionEnabled: boolean;
 }
 
 export interface LightingConfig {
+  // Master Core Glow Toggle (v4.0 - performance)
+  coreGlowEnabled: boolean;
+
+  // Key Light
+  keyLightEnabled: boolean;
   keyLightIntensity: number;
   keyLightColor: [number, number, number];
   keyLightX: number;
   keyLightY: number;
   keyLightZ: number;
+  // Fill Light
+  fillLightEnabled: boolean;
   fillLightIntensity: number;
   fillLightColor: [number, number, number];
+  // Top Light (previously hidden)
+  topLightEnabled: boolean;
+  topLightIntensity: number;
+  // Rim Lights
+  rimLightEnabled: boolean;
   rimLightIntensity: number;
+  rimLight2Enabled: boolean;
+  rimLight2Intensity: number;
+  // HAL Core Lights
+  halCoreLightEnabled: boolean;
   halCoreLightIntensity: number;
   halCoreLightColor: [number, number, number];
   halCoreLightDistance: number;
+  halBackLightEnabled: boolean;
+  halBackLightIntensity: number;
+  redRimLightEnabled: boolean;
+  redRimLightIntensity: number;
+  // Ambient
+  ambientEnabled: boolean;
   ambientIntensity: number;
+  // Animation
   orbitSpeed: number;
   dynamicLighting: boolean;
 }
@@ -119,9 +153,278 @@ export interface EnvironmentConfig {
   hdrName?: string;
 }
 
+// ============================================
+// === MULTI-INSTANCE SYSTEM (v4.0) ===
+// ============================================
+
+// Instance Transform - position, rotation, scale for each instance
+export interface InstanceTransform {
+  position: [number, number, number];
+  rotation: [number, number, number]; // Euler angles in radians
+  scale: [number, number, number];
+}
+
+// Core Instance - individual core with its own config and transform
+export interface CoreInstance {
+  id: string;
+  name: string;
+  enabled: boolean;
+  config: CoreConfig;
+  transform: InstanceTransform;
+}
+
+// Gel Instance - individual gel with optional core linkage
+export interface GelInstance {
+  id: string;
+  name: string;
+  enabled: boolean;
+  config: GelConfig;
+  transform: InstanceTransform;
+  parentCoreId: string | null; // Optional link to a core
+}
+
+// Animation sync modes for multi-instance
+export type AnimationSyncMode = 'independent' | 'synchronized' | 'staggered';
+
+// Maximum instances allowed
+export const MAX_CORES = 10;
+export const MAX_GELS = 10;
+
+// Multi-Instance Presets (v4.0)
+export interface MultiPreset {
+  name: string;
+  icon: string;
+  description: string;
+  cores: Array<{ transform: InstanceTransform }>;
+  gels: Array<{ transform: InstanceTransform; parentCoreId?: number }>; // Index reference to cores
+}
+
+export const MULTI_PRESETS: Record<string, MultiPreset> = {
+  'Single': {
+    name: 'Single',
+    icon: '⚫',
+    description: 'Single core and gel (default)',
+    cores: [
+      { transform: { position: [0, 0, 0], rotation: [0, 0, 0], scale: [1, 1, 1] } },
+    ],
+    gels: [
+      { transform: { position: [0, 0, 0], rotation: [0, 0, 0], scale: [1, 1, 1] }, parentCoreId: 0 },
+    ],
+  },
+  'Binary': {
+    name: 'Binary Stars',
+    icon: '⚫⚫',
+    description: 'Two cores side by side',
+    cores: [
+      { transform: { position: [-0.8, 0, 0], rotation: [0, 0, 0], scale: [0.8, 0.8, 0.8] } },
+      { transform: { position: [0.8, 0, 0], rotation: [0, 0, 0], scale: [0.8, 0.8, 0.8] } },
+    ],
+    gels: [
+      { transform: { position: [0, 0, 0], rotation: [0, 0, 0], scale: [0.8, 0.8, 0.8] }, parentCoreId: 0 },
+      { transform: { position: [0, 0, 0], rotation: [0, 0, 0], scale: [0.8, 0.8, 0.8] }, parentCoreId: 1 },
+    ],
+  },
+  'Orbital': {
+    name: 'Orbital System',
+    icon: '🌍',
+    description: 'Large core with small satellites',
+    cores: [
+      { transform: { position: [0, 0, 0], rotation: [0, 0, 0], scale: [1, 1, 1] } },
+      { transform: { position: [2, 0, 0], rotation: [0, 0, 0], scale: [0.3, 0.3, 0.3] } },
+      { transform: { position: [-1.5, 1, 0], rotation: [0, 0, 0], scale: [0.2, 0.2, 0.2] } },
+    ],
+    gels: [
+      { transform: { position: [0, 0, 0], rotation: [0, 0, 0], scale: [1, 1, 1] }, parentCoreId: 0 },
+      { transform: { position: [0, 0, 0], rotation: [0, 0, 0], scale: [0.3, 0.3, 0.3] }, parentCoreId: 1 },
+      { transform: { position: [0, 0, 0], rotation: [0, 0, 0], scale: [0.2, 0.2, 0.2] }, parentCoreId: 2 },
+    ],
+  },
+  'Triangle': {
+    name: 'Triangle',
+    icon: '🔺',
+    description: 'Three cores in triangle formation',
+    cores: [
+      { transform: { position: [0, 0.8, 0], rotation: [0, 0, 0], scale: [0.7, 0.7, 0.7] } },
+      { transform: { position: [-0.8, -0.4, 0], rotation: [0, 0, 0], scale: [0.7, 0.7, 0.7] } },
+      { transform: { position: [0.8, -0.4, 0], rotation: [0, 0, 0], scale: [0.7, 0.7, 0.7] } },
+    ],
+    gels: [
+      { transform: { position: [0, 0, 0], rotation: [0, 0, 0], scale: [0.7, 0.7, 0.7] }, parentCoreId: 0 },
+      { transform: { position: [0, 0, 0], rotation: [0, 0, 0], scale: [0.7, 0.7, 0.7] }, parentCoreId: 1 },
+      { transform: { position: [0, 0, 0], rotation: [0, 0, 0], scale: [0.7, 0.7, 0.7] }, parentCoreId: 2 },
+    ],
+  },
+  'Stack': {
+    name: 'Vertical Stack',
+    icon: '📚',
+    description: 'Cores stacked vertically',
+    cores: [
+      { transform: { position: [0, -1, 0], rotation: [0, 0, 0], scale: [0.6, 0.6, 0.6] } },
+      { transform: { position: [0, 0, 0], rotation: [0, 0, 0], scale: [0.6, 0.6, 0.6] } },
+      { transform: { position: [0, 1, 0], rotation: [0, 0, 0], scale: [0.6, 0.6, 0.6] } },
+    ],
+    gels: [
+      { transform: { position: [0, 0, 0], rotation: [0, 0, 0], scale: [0.6, 0.6, 0.6] }, parentCoreId: 0 },
+      { transform: { position: [0, 0, 0], rotation: [0, 0, 0], scale: [0.6, 0.6, 0.6] }, parentCoreId: 1 },
+      { transform: { position: [0, 0, 0], rotation: [0, 0, 0], scale: [0.6, 0.6, 0.6] }, parentCoreId: 2 },
+    ],
+  },
+  'Cluster': {
+    name: 'Cluster',
+    icon: '🫧',
+    description: '5 small cores clustered',
+    cores: [
+      { transform: { position: [0, 0, 0], rotation: [0, 0, 0], scale: [0.5, 0.5, 0.5] } },
+      { transform: { position: [0.6, 0.3, 0], rotation: [0, 0, 0], scale: [0.35, 0.35, 0.35] } },
+      { transform: { position: [-0.5, 0.4, 0], rotation: [0, 0, 0], scale: [0.3, 0.3, 0.3] } },
+      { transform: { position: [0.3, -0.5, 0], rotation: [0, 0, 0], scale: [0.4, 0.4, 0.4] } },
+      { transform: { position: [-0.4, -0.4, 0], rotation: [0, 0, 0], scale: [0.35, 0.35, 0.35] } },
+    ],
+    gels: [
+      { transform: { position: [0, 0, 0], rotation: [0, 0, 0], scale: [0.5, 0.5, 0.5] }, parentCoreId: 0 },
+      { transform: { position: [0, 0, 0], rotation: [0, 0, 0], scale: [0.35, 0.35, 0.35] }, parentCoreId: 1 },
+      { transform: { position: [0, 0, 0], rotation: [0, 0, 0], scale: [0.3, 0.3, 0.3] }, parentCoreId: 2 },
+      { transform: { position: [0, 0, 0], rotation: [0, 0, 0], scale: [0.4, 0.4, 0.4] }, parentCoreId: 3 },
+      { transform: { position: [0, 0, 0], rotation: [0, 0, 0], scale: [0.35, 0.35, 0.35] }, parentCoreId: 4 },
+    ],
+  },
+};
+
+/**
+ * Apply a multi-instance preset to config
+ */
+export const applyMultiPreset = (config: ShaderConfig, presetKey: string): ShaderConfig => {
+  const preset = MULTI_PRESETS[presetKey];
+  if (!preset) return config;
+
+  console.log(`[v4.0 Preset] Applying "${presetKey}" preset with ${preset.cores.length} cores, ${preset.gels.length} gels`);
+
+  const newCores: CoreInstance[] = preset.cores.map((presetCore, index) => ({
+    id: index === 0 ? PRIMARY_CORE_ID : `core-${Date.now()}-${index}`,
+    name: `Core ${index + 1}`,
+    enabled: true,
+    config: { ...config.core }, // Keep current shader settings
+    transform: { ...presetCore.transform },
+  }));
+
+  const newGels: GelInstance[] = preset.gels.map((presetGel, index) => ({
+    id: index === 0 ? PRIMARY_GEL_ID : `gel-${Date.now()}-${index}`,
+    name: `Gel ${index + 1}`,
+    enabled: true,
+    config: { ...config.gel }, // Keep current shader settings
+    transform: { ...presetGel.transform },
+    parentCoreId: presetGel.parentCoreId !== undefined ? newCores[presetGel.parentCoreId].id : null,
+  }));
+
+  console.log('[v4.0 Preset] New cores:', newCores.map(c => ({ id: c.id, name: c.name, pos: c.transform.position })));
+  console.log('[v4.0 Preset] New gels:', newGels.map(g => ({ id: g.id, name: g.name, pos: g.transform.position })));
+
+  return {
+    ...config,
+    cores: newCores,
+    gels: newGels,
+    selection: {
+      selectedCoreId: newCores[0].id,
+      selectedGelId: newGels[0].id,
+    },
+  };
+};
+
+// Default configs for instances (extracted for reuse)
+export const DEFAULT_CORE_CONFIG: CoreConfig = {
+  radius: 0.5,
+  subdivision: 64,
+  colorDeep: [0.01, 0.0, 0.0],
+  colorMid: [0.15, 0.0, 0.0],
+  colorGlow: [0.8, 0.0, 0.0],
+  colorHot: [1.0, 0.4, 0.3],
+  emissiveIntensity: 1.5,
+  pulseSpeed: 0.8,
+  pulseIntensity: 0.4,
+  noiseScale: 2.0,
+  noiseIntensity: 0.08,
+  roughness: 0.05,
+  metalness: 0.3,
+  clearcoat: 1.0,
+};
+
+export const DEFAULT_GEL_CONFIG: GelConfig = {
+  radius: 1.0,
+  subdivision: 80,
+  opacity: 0.35,
+  transmission: 0.8,
+  ior: 1.52,
+  thickness: 1.5,
+  roughness: 0.0,
+  clearcoat: 1.0,
+  clearcoatRoughness: 0.0,
+  envMapIntensity: 1.5,
+  attenuationColor: [1.0, 0.7, 0.6],
+  attenuationDistance: 2.5,
+  redBleedIntensity: 0.25,
+  specularIntensity: 2.0,
+  dispersion: 0.0,
+  fresnelPower: 1.8,
+  fresnelIntensity: 0.7,
+  specularPower: 5.0,
+  specularMultiplier: 0.6,
+  fresnelEnabled: true,
+  specularEnabled: true,
+  redBleedEnabled: true,
+  sheenEnabled: true,
+  envReflectionEnabled: true,
+};
+
+// Factory function to create default core instance
+export const createDefaultCore = (index: number): CoreInstance => ({
+  id: `core-${Date.now()}-${index}`,
+  name: `Core ${index + 1}`,
+  enabled: true,
+  config: { ...DEFAULT_CORE_CONFIG },
+  transform: {
+    position: [0, 0, 0],
+    rotation: [0, 0, 0],
+    scale: [1, 1, 1],
+  },
+});
+
+// Factory function to create default gel instance
+export const createDefaultGel = (index: number, parentCoreId?: string): GelInstance => ({
+  id: `gel-${Date.now()}-${index}`,
+  name: `Gel ${index + 1}`,
+  enabled: true,
+  config: { ...DEFAULT_GEL_CONFIG },
+  transform: {
+    position: [0, 0, 0],
+    rotation: [0, 0, 0],
+    scale: [1, 1, 1],
+  },
+  parentCoreId: parentCoreId || null,
+});
+
+// Instance Selection State
+export interface InstanceSelection {
+  selectedCoreId: string | null;
+  selectedGelId: string | null;
+}
+
 export interface ShaderConfig {
+  // Legacy single-instance (for backwards compatibility)
   core: CoreConfig;
   gel: GelConfig;
+
+  // Multi-instance arrays (v4.0)
+  cores: CoreInstance[];
+  gels: GelInstance[];
+
+  // Selection state
+  selection: InstanceSelection;
+
+  // Animation sync mode
+  animationSyncMode: AnimationSyncMode;
+  staggerOffset: number; // For staggered mode (seconds between instances)
+
+  // Other configs (unchanged)
   lighting: LightingConfig;
   animation: AnimationConfig;
   shape: ShapeConfig;
@@ -131,53 +434,89 @@ export interface ShaderConfig {
   meshSource: MeshSource;
 }
 
+// Primary core/gel instance IDs (used as defaults)
+const PRIMARY_CORE_ID = 'core-primary';
+const PRIMARY_GEL_ID = 'gel-primary';
+
 export const DEFAULT_CONFIG: ShaderConfig = {
-  core: {
-    radius: 0.5,
-    subdivision: 64,
-    colorDeep: [0.01, 0.0, 0.0],
-    colorMid: [0.15, 0.0, 0.0],
-    colorGlow: [0.8, 0.0, 0.0],
-    colorHot: [1.0, 0.4, 0.3],
-    emissiveIntensity: 1.5,
-    pulseSpeed: 0.8,
-    pulseIntensity: 0.4,
-    noiseScale: 2.0,
-    noiseIntensity: 0.08,
-    roughness: 0.05,
-    metalness: 0.3,
-    clearcoat: 1.0,
+  // Legacy single-instance (uses first instance's config for backwards compatibility)
+  core: { ...DEFAULT_CORE_CONFIG },
+  gel: { ...DEFAULT_GEL_CONFIG },
+
+  // Multi-instance arrays (v4.0) - starts with one primary instance each
+  cores: [
+    {
+      id: PRIMARY_CORE_ID,
+      name: 'Core 1 (Primary)',
+      enabled: true,
+      config: { ...DEFAULT_CORE_CONFIG },
+      transform: {
+        position: [0, 0, 0],
+        rotation: [0, 0, 0],
+        scale: [1, 1, 1],
+      },
+    },
+  ],
+  gels: [
+    {
+      id: PRIMARY_GEL_ID,
+      name: 'Gel 1 (Primary)',
+      enabled: true,
+      config: { ...DEFAULT_GEL_CONFIG },
+      transform: {
+        position: [0, 0, 0],
+        rotation: [0, 0, 0],
+        scale: [1, 1, 1],
+      },
+      parentCoreId: PRIMARY_CORE_ID,
+    },
+  ],
+
+  // Selection state
+  selection: {
+    selectedCoreId: PRIMARY_CORE_ID,
+    selectedGelId: PRIMARY_GEL_ID,
   },
-  gel: {
-    radius: 1.0,
-    subdivision: 80,
-    opacity: 0.35,
-    transmission: 0.8,
-    ior: 1.52,
-    thickness: 1.5,
-    roughness: 0.0,
-    clearcoat: 1.0,
-    clearcoatRoughness: 0.0,
-    envMapIntensity: 1.5,
-    attenuationColor: [1.0, 0.7, 0.6],
-    attenuationDistance: 2.5,
-    redBleedIntensity: 0.25,
-    specularIntensity: 2.0,
-    dispersion: 0.0,
-  },
+
+  // Animation sync
+  animationSyncMode: 'synchronized',
+  staggerOffset: 0.2,
   lighting: {
+    // Master Core Glow Toggle (v4.0 - performance)
+    coreGlowEnabled: true,
+
+    // Key Light
+    keyLightEnabled: true,
     keyLightIntensity: 2.5,
     keyLightColor: [1.0, 1.0, 1.0],
     keyLightX: 5,
     keyLightY: 5,
     keyLightZ: 6,
+    // Fill Light
+    fillLightEnabled: true,
     fillLightIntensity: 1.2,
     fillLightColor: [0.63, 0.78, 1.0],
+    // Top Light (previously hidden)
+    topLightEnabled: true,
+    topLightIntensity: 2.0,
+    // Rim Lights
+    rimLightEnabled: true,
     rimLightIntensity: 3.0,
+    rimLight2Enabled: true,
+    rimLight2Intensity: 2.0,
+    // HAL Core Lights
+    halCoreLightEnabled: true,
     halCoreLightIntensity: 5.0,
     halCoreLightColor: [1.0, 0.0, 0.0],
     halCoreLightDistance: 4.0,
+    halBackLightEnabled: true,
+    halBackLightIntensity: 3.0,
+    redRimLightEnabled: true,
+    redRimLightIntensity: 2.0,
+    // Ambient
+    ambientEnabled: true,
     ambientIntensity: 0.1,
+    // Animation
     orbitSpeed: 0.08,
     dynamicLighting: true,
   },
@@ -234,6 +573,267 @@ export const DEFAULT_CONFIG: ShaderConfig = {
     builtinType: 'icosahedron',
     scale: 1.0,
   },
+};
+
+// ============================================
+// === MIGRATION & HELPER FUNCTIONS (v4.0) ===
+// ============================================
+
+/**
+ * Migrate legacy v3.x config to v4.0 multi-instance format
+ * This ensures backwards compatibility with saved configs
+ */
+export const migrateConfigToMultiInstance = (config: Partial<ShaderConfig>): ShaderConfig => {
+  // If config already has multi-instance arrays, return as-is with defaults
+  if (config.cores && config.cores.length > 0) {
+    return {
+      ...DEFAULT_CONFIG,
+      ...config,
+    } as ShaderConfig;
+  }
+
+  // Legacy config - create instances from single core/gel
+  const legacyCore = config.core || DEFAULT_CONFIG.core;
+  const legacyGel = config.gel || DEFAULT_CONFIG.gel;
+
+  const primaryCore: CoreInstance = {
+    id: PRIMARY_CORE_ID,
+    name: 'Core 1 (Primary)',
+    enabled: true,
+    config: { ...legacyCore },
+    transform: {
+      position: [0, 0, 0],
+      rotation: [0, 0, 0],
+      scale: [1, 1, 1],
+    },
+  };
+
+  const primaryGel: GelInstance = {
+    id: PRIMARY_GEL_ID,
+    name: 'Gel 1 (Primary)',
+    enabled: true,
+    config: { ...legacyGel },
+    transform: {
+      position: [0, 0, 0],
+      rotation: [0, 0, 0],
+      scale: [1, 1, 1],
+    },
+    parentCoreId: PRIMARY_CORE_ID,
+  };
+
+  return {
+    ...DEFAULT_CONFIG,
+    ...config,
+    core: legacyCore,
+    gel: legacyGel,
+    cores: [primaryCore],
+    gels: [primaryGel],
+    selection: {
+      selectedCoreId: PRIMARY_CORE_ID,
+      selectedGelId: PRIMARY_GEL_ID,
+    },
+  };
+};
+
+/**
+ * Get the currently selected core instance
+ */
+export const getSelectedCore = (config: ShaderConfig): CoreInstance | null => {
+  if (!config.selection.selectedCoreId) return null;
+  return config.cores.find(c => c.id === config.selection.selectedCoreId) || null;
+};
+
+/**
+ * Get the currently selected gel instance
+ */
+export const getSelectedGel = (config: ShaderConfig): GelInstance | null => {
+  if (!config.selection.selectedGelId) return null;
+  return config.gels.find(g => g.id === config.selection.selectedGelId) || null;
+};
+
+/**
+ * Update a specific core instance
+ */
+export const updateCoreInstance = (
+  config: ShaderConfig,
+  coreId: string,
+  updates: Partial<CoreInstance>
+): ShaderConfig => {
+  return {
+    ...config,
+    cores: config.cores.map(core =>
+      core.id === coreId ? { ...core, ...updates } : core
+    ),
+  };
+};
+
+/**
+ * Update a specific gel instance
+ */
+export const updateGelInstance = (
+  config: ShaderConfig,
+  gelId: string,
+  updates: Partial<GelInstance>
+): ShaderConfig => {
+  return {
+    ...config,
+    gels: config.gels.map(gel =>
+      gel.id === gelId ? { ...gel, ...updates } : gel
+    ),
+  };
+};
+
+/**
+ * Add a new core instance
+ */
+export const addCoreInstance = (config: ShaderConfig): ShaderConfig => {
+  if (config.cores.length >= MAX_CORES) {
+    console.warn(`Maximum cores (${MAX_CORES}) reached`);
+    return config;
+  }
+  const newCore = createDefaultCore(config.cores.length);
+  return {
+    ...config,
+    cores: [...config.cores, newCore],
+    selection: {
+      ...config.selection,
+      selectedCoreId: newCore.id,
+    },
+  };
+};
+
+/**
+ * Add a new gel instance
+ */
+export const addGelInstance = (config: ShaderConfig, parentCoreId?: string): ShaderConfig => {
+  if (config.gels.length >= MAX_GELS) {
+    console.warn(`Maximum gels (${MAX_GELS}) reached`);
+    return config;
+  }
+  const newGel = createDefaultGel(config.gels.length, parentCoreId);
+  return {
+    ...config,
+    gels: [...config.gels, newGel],
+    selection: {
+      ...config.selection,
+      selectedGelId: newGel.id,
+    },
+  };
+};
+
+/**
+ * Remove a core instance (cannot remove last core)
+ */
+export const removeCoreInstance = (config: ShaderConfig, coreId: string): ShaderConfig => {
+  if (config.cores.length <= 1) {
+    console.warn('Cannot remove the last core');
+    return config;
+  }
+  const newCores = config.cores.filter(c => c.id !== coreId);
+  // Also remove or unlink gels that were linked to this core
+  const newGels = config.gels.map(gel =>
+    gel.parentCoreId === coreId ? { ...gel, parentCoreId: null } : gel
+  );
+  return {
+    ...config,
+    cores: newCores,
+    gels: newGels,
+    selection: {
+      selectedCoreId: config.selection.selectedCoreId === coreId
+        ? newCores[0]?.id || null
+        : config.selection.selectedCoreId,
+      selectedGelId: config.selection.selectedGelId,
+    },
+  };
+};
+
+/**
+ * Remove a gel instance (cannot remove last gel)
+ */
+export const removeGelInstance = (config: ShaderConfig, gelId: string): ShaderConfig => {
+  if (config.gels.length <= 1) {
+    console.warn('Cannot remove the last gel');
+    return config;
+  }
+  const newGels = config.gels.filter(g => g.id !== gelId);
+  return {
+    ...config,
+    gels: newGels,
+    selection: {
+      selectedCoreId: config.selection.selectedCoreId,
+      selectedGelId: config.selection.selectedGelId === gelId
+        ? newGels[0]?.id || null
+        : config.selection.selectedGelId,
+    },
+  };
+};
+
+/**
+ * Duplicate a core instance
+ */
+export const duplicateCoreInstance = (config: ShaderConfig, coreId: string): ShaderConfig => {
+  if (config.cores.length >= MAX_CORES) {
+    console.warn(`Maximum cores (${MAX_CORES}) reached`);
+    return config;
+  }
+  const sourceCore = config.cores.find(c => c.id === coreId);
+  if (!sourceCore) return config;
+
+  const newCore: CoreInstance = {
+    ...sourceCore,
+    id: `core-${Date.now()}-${config.cores.length}`,
+    name: `${sourceCore.name} (Copy)`,
+    transform: {
+      ...sourceCore.transform,
+      position: [
+        sourceCore.transform.position[0] + 0.5,
+        sourceCore.transform.position[1],
+        sourceCore.transform.position[2],
+      ],
+    },
+  };
+  return {
+    ...config,
+    cores: [...config.cores, newCore],
+    selection: {
+      ...config.selection,
+      selectedCoreId: newCore.id,
+    },
+  };
+};
+
+/**
+ * Duplicate a gel instance
+ */
+export const duplicateGelInstance = (config: ShaderConfig, gelId: string): ShaderConfig => {
+  if (config.gels.length >= MAX_GELS) {
+    console.warn(`Maximum gels (${MAX_GELS}) reached`);
+    return config;
+  }
+  const sourceGel = config.gels.find(g => g.id === gelId);
+  if (!sourceGel) return config;
+
+  const newGel: GelInstance = {
+    ...sourceGel,
+    id: `gel-${Date.now()}-${config.gels.length}`,
+    name: `${sourceGel.name} (Copy)`,
+    transform: {
+      ...sourceGel.transform,
+      position: [
+        sourceGel.transform.position[0] + 0.5,
+        sourceGel.transform.position[1],
+        sourceGel.transform.position[2],
+      ],
+    },
+  };
+  return {
+    ...config,
+    gels: [...config.gels, newGel],
+    selection: {
+      ...config.selection,
+      selectedGelId: newGel.id,
+    },
+  };
 };
 
 // ============================================
@@ -915,7 +1515,7 @@ User request: ${prompt}`;
       </div>
 
       {response && (
-        <div className="bg-zinc-800/50 rounded p-3 max-h-40 overflow-y-auto">
+        <div className="bg-zinc-800/50 rounded p-3 max-h-40 overflow-y-auto custom-scrollbar">
           <pre className="text-[10px] text-zinc-300 whitespace-pre-wrap">{response}</pre>
         </div>
       )}
@@ -1023,9 +1623,13 @@ const DebugPanel: React.FC<DebugPanelProps> = ({ config, onConfigChange, onMeshI
       }
       // Number keys for tabs
       if (isOpen && e.key >= '1' && e.key <= '9') {
-        const tabs = ['core', 'gel', 'lighting', 'animation', 'shape', 'camera', 'presets', 'ai', 'info'] as const;
+        const tabKeys = ['instances', 'core', 'gel', 'lighting', 'animation', 'shape', 'camera', 'effects', 'capture', 'presets'] as const;
         const index = parseInt(e.key) - 1;
-        if (tabs[index]) setActiveTab(tabs[index]);
+        if (e.key === '0') {
+          setActiveTab('presets');
+        } else if (tabKeys[index]) {
+          setActiveTab(tabKeys[index]);
+        }
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -1150,10 +1754,12 @@ const DebugPanel: React.FC<DebugPanelProps> = ({ config, onConfigChange, onMeshI
     input.click();
   };
 
-  const randomize = () => {
-    const randomColor = (): [number, number, number] => [Math.random(), Math.random(), Math.random()];
-    const randomInRange = (min: number, max: number) => min + Math.random() * (max - min);
+  // Helper functions for randomization
+  const randomColor = (): [number, number, number] => [Math.random(), Math.random(), Math.random()];
+  const randomInRange = (min: number, max: number) => min + Math.random() * (max - min);
 
+  // Section-specific random functions
+  const randomizeCore = () => {
     onConfigChange({
       ...config,
       core: {
@@ -1165,13 +1771,101 @@ const DebugPanel: React.FC<DebugPanelProps> = ({ config, onConfigChange, onMeshI
         emissiveIntensity: randomInRange(1, 4),
         pulseSpeed: randomInRange(0.3, 1.5),
         pulseIntensity: randomInRange(0.2, 0.6),
-      },
-      lighting: {
-        ...config.lighting,
-        halCoreLightColor: randomColor(),
-        halCoreLightIntensity: randomInRange(3, 10),
+        noiseScale: randomInRange(1, 4),
+        noiseIntensity: randomInRange(0.02, 0.15),
       },
     });
+  };
+
+  const randomizeGel = () => {
+    onConfigChange({
+      ...config,
+      gel: {
+        ...config.gel,
+        transmission: randomInRange(0.5, 1.0),
+        ior: randomInRange(1.3, 2.0),
+        thickness: randomInRange(0.5, 3.0),
+        roughness: randomInRange(0, 0.3),
+        clearcoat: randomInRange(0.5, 1.0),
+        envMapIntensity: randomInRange(0.5, 3.0),
+        attenuationColor: randomColor(),
+        redBleedIntensity: randomInRange(0.1, 0.5),
+        specularIntensity: randomInRange(0.5, 3.0),
+      },
+    });
+  };
+
+  const randomizeLighting = () => {
+    onConfigChange({
+      ...config,
+      lighting: {
+        ...config.lighting,
+        keyLightIntensity: randomInRange(1, 5),
+        keyLightColor: randomColor(),
+        fillLightIntensity: randomInRange(0.5, 3),
+        fillLightColor: randomColor(),
+        rimLightIntensity: randomInRange(1, 8),
+        halCoreLightColor: randomColor(),
+        halCoreLightIntensity: randomInRange(3, 15),
+        ambientIntensity: randomInRange(0.05, 0.3),
+      },
+      gel: {
+        ...config.gel,
+        // Reflections & Glare
+        specularIntensity: randomInRange(0.5, 4),
+        envMapIntensity: randomInRange(0.3, 3),
+        clearcoat: randomInRange(0.3, 1),
+        clearcoatRoughness: randomInRange(0, 0.5),
+        roughness: randomInRange(0, 0.3),
+        // Fresnel Control (v3.7.1)
+        fresnelPower: randomInRange(0.5, 3),
+        fresnelIntensity: randomInRange(0.2, 1.2),
+        specularPower: randomInRange(2, 8),
+        specularMultiplier: randomInRange(0.1, 1),
+      },
+    });
+  };
+
+  const randomizeAnimation = () => {
+    onConfigChange({
+      ...config,
+      animation: {
+        ...config.animation,
+        autoRotateSpeed: randomInRange(0.1, 1.5),
+        breatheSpeed: randomInRange(0.3, 2.0),
+        breatheIntensity: randomInRange(0.01, 0.08),
+        wobbleSpeed: randomInRange(0.3, 1.5),
+        wobbleIntensity: randomInRange(0.01, 0.05),
+        meshRotationSpeed: randomInRange(0.02, 0.15),
+      },
+    });
+  };
+
+  const randomizeEffects = () => {
+    onConfigChange({
+      ...config,
+      postProcess: {
+        ...config.postProcess,
+        exposure: randomInRange(0.8, 2.0),
+        bloomIntensity: randomInRange(0.3, 2.0),
+        bloomThreshold: randomInRange(0.1, 0.5),
+        bloomRadius: randomInRange(0.2, 0.8),
+        chromaticAberrationAmount: randomInRange(0.001, 0.005),
+        vignetteIntensity: randomInRange(0.2, 0.8),
+      },
+    });
+  };
+
+  // Get randomize function for current tab
+  const getRandomizeForTab = () => {
+    switch (activeTab) {
+      case 'core': return randomizeCore;
+      case 'gel': return randomizeGel;
+      case 'lighting': return randomizeLighting;
+      case 'animation': return randomizeAnimation;
+      case 'effects': return randomizeEffects;
+      default: return null;
+    }
   };
 
   // Generate TSL shader code from current config
@@ -1432,16 +2126,17 @@ const gelMaterial = new MeshPhysicalNodeMaterial({
   };
 
   const tabs = [
-    { id: 'core', label: 'Core', icon: '🔴', shortcut: '1' },
-    { id: 'gel', label: 'Gel', icon: '💎', shortcut: '2' },
-    { id: 'lighting', label: 'Light', icon: '💡', shortcut: '3' },
-    { id: 'animation', label: 'Anim', icon: '🎬', shortcut: '4' },
-    { id: 'shape', label: 'Shape', icon: '🔷', shortcut: '5' },
-    { id: 'camera', label: 'Camera', icon: '📷', shortcut: '6' },
-    { id: 'effects', label: 'Effects', icon: '✨', shortcut: '7' },
-    { id: 'capture', label: 'Capture', icon: '📸', shortcut: '8' },
-    { id: 'presets', label: 'Presets', icon: '📦', shortcut: '9' },
-    { id: 'ai', label: 'AI', icon: '🤖', shortcut: '0' },
+    { id: 'instances', label: 'Multi', icon: '🌐', shortcut: '1' }, // v4.0 - Multi-instance
+    { id: 'core', label: 'Core', icon: '🔴', shortcut: '2' },
+    { id: 'gel', label: 'Gel', icon: '💎', shortcut: '3' },
+    { id: 'lighting', label: 'Light', icon: '💡', shortcut: '4' },
+    { id: 'animation', label: 'Anim', icon: '🎬', shortcut: '5' },
+    { id: 'shape', label: 'Shape', icon: '🔷', shortcut: '6' },
+    { id: 'camera', label: 'Camera', icon: '📷', shortcut: '7' },
+    { id: 'effects', label: 'Effects', icon: '✨', shortcut: '8' },
+    { id: 'capture', label: 'Capture', icon: '📸', shortcut: '9' },
+    { id: 'presets', label: 'Presets', icon: '📦', shortcut: '0' },
+    { id: 'ai', label: 'AI', icon: '🤖', shortcut: '' },
     { id: 'info', label: 'Info', icon: 'ℹ️', shortcut: '' },
   ] as const;
 
@@ -1514,13 +2209,15 @@ const gelMaterial = new MeshPhysicalNodeMaterial({
 
           {/* Actions Bar */}
           <div className="flex-shrink-0 bg-zinc-900/80 border-b border-zinc-800 px-3 py-2 flex items-center gap-1 flex-wrap">
-            <button
-              onClick={randomize}
-              className="px-2 py-1 text-[10px] text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 rounded transition-colors"
-              title="Randomize colors"
-            >
-              🎲 Random
-            </button>
+            {getRandomizeForTab() && (
+              <button
+                onClick={getRandomizeForTab()!}
+                className="px-2 py-1 text-[10px] text-amber-400 hover:text-amber-300 hover:bg-amber-500/10 border border-amber-500/30 rounded transition-colors"
+                title={`Randomize ${activeTab} settings`}
+              >
+                🎲 Random {activeTab.charAt(0).toUpperCase() + activeTab.slice(1)}
+              </button>
+            )}
             <Dropdown
               icon="📦"
               label="Config"
@@ -1542,8 +2239,388 @@ const gelMaterial = new MeshPhysicalNodeMaterial({
           </div>
 
           {/* Scrollable Content */}
-          <div className="flex-1 overflow-y-auto p-3">
+          <div className="flex-1 overflow-y-auto p-3 custom-scrollbar">
             <div className="space-y-3">
+
+            {/* Instances Tab - Multi-Instance Management (v4.0) */}
+            {activeTab === 'instances' && (
+              <>
+                {/* Arrangement Presets */}
+                <Section title="Arrangements" icon="✨" defaultOpen badge="NEW">
+                  <div className="grid grid-cols-3 gap-2">
+                    {Object.entries(MULTI_PRESETS).map(([key, preset]) => (
+                      <button
+                        key={key}
+                        onClick={() => onConfigChange(applyMultiPreset(config, key))}
+                        className="p-2 rounded-lg border border-zinc-700 hover:border-amber-500/50
+                          bg-zinc-800/50 hover:bg-amber-500/10 transition-all text-center"
+                        title={preset.description}
+                      >
+                        <span className="text-lg block">{preset.icon}</span>
+                        <span className="text-[10px] text-zinc-400 mt-1 block">{preset.name}</span>
+                      </button>
+                    ))}
+                  </div>
+                </Section>
+
+                <Section title="Cores" icon="🔴" defaultOpen badge="v4.0">
+                  <div className="space-y-2">
+                    {/* Core Instance List */}
+                    {config.cores.map((core, index) => (
+                      <div
+                        key={core.id}
+                        className={`flex items-center justify-between p-2 rounded-lg border cursor-pointer transition-all
+                          ${config.selection.selectedCoreId === core.id
+                            ? 'bg-red-500/20 border-red-500/50'
+                            : 'bg-zinc-800/50 border-zinc-700 hover:border-zinc-600'
+                          }`}
+                        onClick={() => onConfigChange({
+                          ...config,
+                          selection: { ...config.selection, selectedCoreId: core.id }
+                        })}
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className={`w-2 h-2 rounded-full ${core.enabled ? 'bg-red-500' : 'bg-zinc-600'}`} />
+                          <span className="text-xs font-medium text-zinc-300">{core.name}</span>
+                          {index === 0 && (
+                            <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400">Primary</span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const updatedCores = config.cores.map(c =>
+                                c.id === core.id ? { ...c, enabled: !c.enabled } : c
+                              );
+                              onConfigChange({ ...config, cores: updatedCores });
+                            }}
+                            className="p-1 rounded hover:bg-zinc-700 transition-colors"
+                            title={core.enabled ? 'Hide' : 'Show'}
+                          >
+                            <span className="text-xs">{core.enabled ? '👁️' : '👁️‍🗨️'}</span>
+                          </button>
+                          {config.cores.length < MAX_CORES && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onConfigChange(duplicateCoreInstance(config, core.id));
+                              }}
+                              className="p-1 rounded hover:bg-zinc-700 transition-colors"
+                              title="Duplicate"
+                            >
+                              <span className="text-xs">📋</span>
+                            </button>
+                          )}
+                          {config.cores.length > 1 && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onConfigChange(removeCoreInstance(config, core.id));
+                              }}
+                              className="p-1 rounded hover:bg-red-500/20 transition-colors"
+                              title="Delete"
+                            >
+                              <span className="text-xs">🗑️</span>
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+
+                    {/* Add Core Button */}
+                    <button
+                      onClick={() => onConfigChange(addCoreInstance(config))}
+                      disabled={config.cores.length >= MAX_CORES}
+                      className="w-full p-2 rounded-lg border border-dashed border-zinc-700 hover:border-red-500/50
+                        text-zinc-500 hover:text-red-400 text-xs font-medium transition-all
+                        disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                    >
+                      <span>+</span>
+                      <span>Add Core ({config.cores.length}/{MAX_CORES})</span>
+                    </button>
+                  </div>
+                </Section>
+
+                <Section title="Gels" icon="💎" defaultOpen badge="v4.0">
+                  <div className="space-y-2">
+                    {/* Gel Instance List */}
+                    {config.gels.map((gel, index) => (
+                      <div
+                        key={gel.id}
+                        className={`flex items-center justify-between p-2 rounded-lg border cursor-pointer transition-all
+                          ${config.selection.selectedGelId === gel.id
+                            ? 'bg-cyan-500/20 border-cyan-500/50'
+                            : 'bg-zinc-800/50 border-zinc-700 hover:border-zinc-600'
+                          }`}
+                        onClick={() => onConfigChange({
+                          ...config,
+                          selection: { ...config.selection, selectedGelId: gel.id }
+                        })}
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className={`w-2 h-2 rounded-full ${gel.enabled ? 'bg-cyan-500' : 'bg-zinc-600'}`} />
+                          <span className="text-xs font-medium text-zinc-300">{gel.name}</span>
+                          {index === 0 && (
+                            <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400">Primary</span>
+                          )}
+                          {gel.parentCoreId && (
+                            <span className="text-[9px] px-1.5 py-0.5 rounded bg-zinc-700 text-zinc-400">
+                              → {config.cores.find(c => c.id === gel.parentCoreId)?.name || 'Core'}
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const updatedGels = config.gels.map(g =>
+                                g.id === gel.id ? { ...g, enabled: !g.enabled } : g
+                              );
+                              onConfigChange({ ...config, gels: updatedGels });
+                            }}
+                            className="p-1 rounded hover:bg-zinc-700 transition-colors"
+                            title={gel.enabled ? 'Hide' : 'Show'}
+                          >
+                            <span className="text-xs">{gel.enabled ? '👁️' : '👁️‍🗨️'}</span>
+                          </button>
+                          {config.gels.length < MAX_GELS && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onConfigChange(duplicateGelInstance(config, gel.id));
+                              }}
+                              className="p-1 rounded hover:bg-zinc-700 transition-colors"
+                              title="Duplicate"
+                            >
+                              <span className="text-xs">📋</span>
+                            </button>
+                          )}
+                          {config.gels.length > 1 && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onConfigChange(removeGelInstance(config, gel.id));
+                              }}
+                              className="p-1 rounded hover:bg-red-500/20 transition-colors"
+                              title="Delete"
+                            >
+                              <span className="text-xs">🗑️</span>
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+
+                    {/* Add Gel Button */}
+                    <button
+                      onClick={() => onConfigChange(addGelInstance(config, config.selection.selectedCoreId || undefined))}
+                      disabled={config.gels.length >= MAX_GELS}
+                      className="w-full p-2 rounded-lg border border-dashed border-zinc-700 hover:border-cyan-500/50
+                        text-zinc-500 hover:text-cyan-400 text-xs font-medium transition-all
+                        disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                    >
+                      <span>+</span>
+                      <span>Add Gel ({config.gels.length}/{MAX_GELS})</span>
+                    </button>
+                  </div>
+                </Section>
+
+                {/* Transform Controls for Selected Instance */}
+                <Section title="Transform" icon="📐" defaultOpen badge="Selected">
+                  {(config.selection.selectedCoreId || config.selection.selectedGelId) ? (
+                    <div className="space-y-3">
+                      {/* Determine which instance is selected */}
+                      {config.selection.selectedCoreId && (() => {
+                        const selectedCore = getSelectedCore(config);
+                        if (!selectedCore) return null;
+                        return (
+                          <div className="space-y-2">
+                            <div className="text-[10px] text-amber-400 uppercase tracking-wider mb-2">
+                              Core: {selectedCore.name}
+                            </div>
+                            <div className="grid grid-cols-3 gap-2">
+                              <div className="space-y-1">
+                                <label className="text-[9px] text-zinc-500">Pos X</label>
+                                <input
+                                  type="number"
+                                  step="0.1"
+                                  value={selectedCore.transform.position[0]}
+                                  onChange={(e) => {
+                                    const newPos: [number, number, number] = [...selectedCore.transform.position];
+                                    newPos[0] = parseFloat(e.target.value) || 0;
+                                    onConfigChange(updateCoreInstance(config, selectedCore.id, {
+                                      transform: { ...selectedCore.transform, position: newPos }
+                                    }));
+                                  }}
+                                  className="w-full px-2 py-1 bg-zinc-800 border border-zinc-700 rounded text-xs text-zinc-300"
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <label className="text-[9px] text-zinc-500">Pos Y</label>
+                                <input
+                                  type="number"
+                                  step="0.1"
+                                  value={selectedCore.transform.position[1]}
+                                  onChange={(e) => {
+                                    const newPos: [number, number, number] = [...selectedCore.transform.position];
+                                    newPos[1] = parseFloat(e.target.value) || 0;
+                                    onConfigChange(updateCoreInstance(config, selectedCore.id, {
+                                      transform: { ...selectedCore.transform, position: newPos }
+                                    }));
+                                  }}
+                                  className="w-full px-2 py-1 bg-zinc-800 border border-zinc-700 rounded text-xs text-zinc-300"
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <label className="text-[9px] text-zinc-500">Pos Z</label>
+                                <input
+                                  type="number"
+                                  step="0.1"
+                                  value={selectedCore.transform.position[2]}
+                                  onChange={(e) => {
+                                    const newPos: [number, number, number] = [...selectedCore.transform.position];
+                                    newPos[2] = parseFloat(e.target.value) || 0;
+                                    onConfigChange(updateCoreInstance(config, selectedCore.id, {
+                                      transform: { ...selectedCore.transform, position: newPos }
+                                    }));
+                                  }}
+                                  className="w-full px-2 py-1 bg-zinc-800 border border-zinc-700 rounded text-xs text-zinc-300"
+                                />
+                              </div>
+                            </div>
+                            <Slider
+                              label="Scale"
+                              value={selectedCore.transform.scale[0]}
+                              min={0.1}
+                              max={3}
+                              step={0.1}
+                              onChange={(v) => {
+                                onConfigChange(updateCoreInstance(config, selectedCore.id, {
+                                  transform: { ...selectedCore.transform, scale: [v, v, v] }
+                                }));
+                              }}
+                              tooltip="Uniform scale"
+                            />
+                          </div>
+                        );
+                      })()}
+
+                      {config.selection.selectedGelId && !config.selection.selectedCoreId && (() => {
+                        const selectedGel = getSelectedGel(config);
+                        if (!selectedGel) return null;
+                        return (
+                          <div className="space-y-2">
+                            <div className="text-[10px] text-cyan-400 uppercase tracking-wider mb-2">
+                              Gel: {selectedGel.name}
+                            </div>
+                            <div className="grid grid-cols-3 gap-2">
+                              <div className="space-y-1">
+                                <label className="text-[9px] text-zinc-500">Pos X</label>
+                                <input
+                                  type="number"
+                                  step="0.1"
+                                  value={selectedGel.transform.position[0]}
+                                  onChange={(e) => {
+                                    const newPos: [number, number, number] = [...selectedGel.transform.position];
+                                    newPos[0] = parseFloat(e.target.value) || 0;
+                                    onConfigChange(updateGelInstance(config, selectedGel.id, {
+                                      transform: { ...selectedGel.transform, position: newPos }
+                                    }));
+                                  }}
+                                  className="w-full px-2 py-1 bg-zinc-800 border border-zinc-700 rounded text-xs text-zinc-300"
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <label className="text-[9px] text-zinc-500">Pos Y</label>
+                                <input
+                                  type="number"
+                                  step="0.1"
+                                  value={selectedGel.transform.position[1]}
+                                  onChange={(e) => {
+                                    const newPos: [number, number, number] = [...selectedGel.transform.position];
+                                    newPos[1] = parseFloat(e.target.value) || 0;
+                                    onConfigChange(updateGelInstance(config, selectedGel.id, {
+                                      transform: { ...selectedGel.transform, position: newPos }
+                                    }));
+                                  }}
+                                  className="w-full px-2 py-1 bg-zinc-800 border border-zinc-700 rounded text-xs text-zinc-300"
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <label className="text-[9px] text-zinc-500">Pos Z</label>
+                                <input
+                                  type="number"
+                                  step="0.1"
+                                  value={selectedGel.transform.position[2]}
+                                  onChange={(e) => {
+                                    const newPos: [number, number, number] = [...selectedGel.transform.position];
+                                    newPos[2] = parseFloat(e.target.value) || 0;
+                                    onConfigChange(updateGelInstance(config, selectedGel.id, {
+                                      transform: { ...selectedGel.transform, position: newPos }
+                                    }));
+                                  }}
+                                  className="w-full px-2 py-1 bg-zinc-800 border border-zinc-700 rounded text-xs text-zinc-300"
+                                />
+                              </div>
+                            </div>
+                            <Slider
+                              label="Scale"
+                              value={selectedGel.transform.scale[0]}
+                              min={0.1}
+                              max={3}
+                              step={0.1}
+                              onChange={(v) => {
+                                onConfigChange(updateGelInstance(config, selectedGel.id, {
+                                  transform: { ...selectedGel.transform, scale: [v, v, v] }
+                                }));
+                              }}
+                              tooltip="Uniform scale"
+                            />
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  ) : (
+                    <div className="text-xs text-zinc-500 text-center py-4">
+                      Select a core or gel to edit its transform
+                    </div>
+                  )}
+                </Section>
+
+                {/* Animation Sync */}
+                <Section title="Animation Sync" icon="🔄" defaultOpen>
+                  <Select
+                    label="Sync Mode"
+                    value={config.animationSyncMode}
+                    options={[
+                      { value: 'synchronized', label: 'Synchronized' },
+                      { value: 'independent', label: 'Independent' },
+                      { value: 'staggered', label: 'Staggered' },
+                    ]}
+                    onChange={(v) => onConfigChange({ ...config, animationSyncMode: v as AnimationSyncMode })}
+                    tooltip="How instances animate together"
+                  />
+                  {config.animationSyncMode === 'staggered' && (
+                    <Slider
+                      label="Stagger Offset"
+                      value={config.staggerOffset}
+                      min={0}
+                      max={1}
+                      step={0.05}
+                      onChange={(v) => onConfigChange({ ...config, staggerOffset: v })}
+                      tooltip="Time offset between instances (seconds)"
+                    />
+                  )}
+                </Section>
+
+                {/* Info */}
+                <div className="text-[10px] text-zinc-500 text-center pt-2 border-t border-zinc-800">
+                  Multi-Instance System v4.0-alpha • Max {MAX_CORES} cores, {MAX_GELS} gels
+                </div>
+              </>
+            )}
+
             {/* Core Tab */}
             {activeTab === 'core' && (
               <>
@@ -1630,7 +2707,44 @@ const gelMaterial = new MeshPhysicalNodeMaterial({
             {/* Lighting Tab */}
             {activeTab === 'lighting' && (
               <>
+                {/* Master Core Glow Toggle - Performance Optimization */}
+                <Section title="Core Glow Master" icon="⚡" defaultOpen badge="PERF">
+                  <div className="p-3 bg-gradient-to-r from-red-500/10 to-orange-500/10 rounded-lg border border-red-500/30">
+                    <Toggle
+                      label="Enable Core Glow"
+                      value={config.lighting.coreGlowEnabled}
+                      onChange={(v) => {
+                        // When toggling, also update all related lights
+                        updateLighting({
+                          coreGlowEnabled: v,
+                          halCoreLightEnabled: v,
+                          halBackLightEnabled: v,
+                          redRimLightEnabled: v,
+                        });
+                        // Also set core emissive to 0 when disabled
+                        if (!v) {
+                          onConfigChange({
+                            ...config,
+                            core: { ...config.core, emissiveIntensity: 0 },
+                            lighting: {
+                              ...config.lighting,
+                              coreGlowEnabled: false,
+                              halCoreLightEnabled: false,
+                              halBackLightEnabled: false,
+                              redRimLightEnabled: false,
+                            },
+                          });
+                        }
+                      }}
+                    />
+                    <p className="text-[10px] text-zinc-500 mt-2">
+                      Kills HAL Core, Back Light, Red Rim & Core Emissive for better FPS
+                    </p>
+                  </div>
+                </Section>
+
                 <Section title="Key Light" icon="☀️" defaultOpen>
+                  <Toggle label="Enabled" value={config.lighting.keyLightEnabled} onChange={(v) => updateLighting({ keyLightEnabled: v })} />
                   <Slider label="Intensity" value={config.lighting.keyLightIntensity} min={0} max={10} step={0.1} onChange={(v) => updateLighting({ keyLightIntensity: v })} />
                   <ColorPicker label="Color" value={config.lighting.keyLightColor} onChange={(v) => updateLighting({ keyLightColor: v })} />
                   <Slider label="Position X" value={config.lighting.keyLightX} min={-10} max={10} step={0.5} onChange={(v) => updateLighting({ keyLightX: v })} />
@@ -1639,24 +2753,143 @@ const gelMaterial = new MeshPhysicalNodeMaterial({
                 </Section>
 
                 <Section title="Fill Light" icon="🌤" defaultOpen>
+                  <Toggle label="Enabled" value={config.lighting.fillLightEnabled} onChange={(v) => updateLighting({ fillLightEnabled: v })} />
                   <Slider label="Intensity" value={config.lighting.fillLightIntensity} min={0} max={5} step={0.1} onChange={(v) => updateLighting({ fillLightIntensity: v })} />
                   <ColorPicker label="Color" value={config.lighting.fillLightColor} onChange={(v) => updateLighting({ fillLightColor: v })} />
                 </Section>
 
-                <Section title="Rim Light" icon="🌙" defaultOpen>
-                  <Slider label="Intensity" value={config.lighting.rimLightIntensity} min={0} max={10} step={0.1} onChange={(v) => updateLighting({ rimLightIntensity: v })} />
+                <Section title="Top Light" icon="⬆️" defaultOpen badge="v3.7.2">
+                  <Toggle label="Enabled" value={config.lighting.topLightEnabled} onChange={(v) => updateLighting({ topLightEnabled: v })} />
+                  <Slider label="Intensity" value={config.lighting.topLightIntensity} min={0} max={10} step={0.1} onChange={(v) => updateLighting({ topLightIntensity: v })} />
+                </Section>
+
+                <Section title="Rim Lights" icon="🌙" defaultOpen>
+                  <Toggle label="Rim 1 Enabled" value={config.lighting.rimLightEnabled} onChange={(v) => updateLighting({ rimLightEnabled: v })} />
+                  <Slider label="Rim 1 Intensity" value={config.lighting.rimLightIntensity} min={0} max={10} step={0.1} onChange={(v) => updateLighting({ rimLightIntensity: v })} />
+                  <Toggle label="Rim 2 Enabled" value={config.lighting.rimLight2Enabled} onChange={(v) => updateLighting({ rimLight2Enabled: v })} />
+                  <Slider label="Rim 2 Intensity" value={config.lighting.rimLight2Intensity} min={0} max={10} step={0.1} onChange={(v) => updateLighting({ rimLight2Intensity: v })} />
                 </Section>
 
                 <Section title="HAL Core Light" icon="🔴" defaultOpen badge="Important">
+                  <Toggle label="Enabled" value={config.lighting.halCoreLightEnabled} onChange={(v) => updateLighting({ halCoreLightEnabled: v })} />
                   <Slider label="Intensity" value={config.lighting.halCoreLightIntensity} min={0} max={20} step={0.5} onChange={(v) => updateLighting({ halCoreLightIntensity: v })} />
                   <ColorPicker label="Color" value={config.lighting.halCoreLightColor} onChange={(v) => updateLighting({ halCoreLightColor: v })} />
                   <Slider label="Distance" value={config.lighting.halCoreLightDistance} min={1} max={10} step={0.5} onChange={(v) => updateLighting({ halCoreLightDistance: v })} tooltip="Light falloff distance" />
                 </Section>
 
+                <Section title="HAL Back Lights" icon="🔥" defaultOpen badge="v3.7.2">
+                  <Toggle label="Back Light" value={config.lighting.halBackLightEnabled} onChange={(v) => updateLighting({ halBackLightEnabled: v })} />
+                  <Slider label="Back Intensity" value={config.lighting.halBackLightIntensity} min={0} max={10} step={0.1} onChange={(v) => updateLighting({ halBackLightIntensity: v })} />
+                  <Toggle label="Red Rim Light" value={config.lighting.redRimLightEnabled} onChange={(v) => updateLighting({ redRimLightEnabled: v })} />
+                  <Slider label="Red Rim Intensity" value={config.lighting.redRimLightIntensity} min={0} max={10} step={0.1} onChange={(v) => updateLighting({ redRimLightIntensity: v })} />
+                </Section>
+
                 <Section title="Environment" icon="🌍">
+                  <Toggle label="Ambient Enabled" value={config.lighting.ambientEnabled} onChange={(v) => updateLighting({ ambientEnabled: v })} />
                   <Slider label="Ambient" value={config.lighting.ambientIntensity} min={0} max={1} step={0.01} onChange={(v) => updateLighting({ ambientIntensity: v })} />
                   <Toggle label="Dynamic Lighting" value={config.lighting.dynamicLighting} onChange={(v) => updateLighting({ dynamicLighting: v })} tooltip="Animated light orbiting" />
                   <Slider label="Orbit Speed" value={config.lighting.orbitSpeed} min={0} max={0.5} step={0.01} onChange={(v) => updateLighting({ orbitSpeed: v })} />
+                </Section>
+
+                <Section title="Reflections & Glare" icon="✨" defaultOpen badge="New">
+                  <Slider
+                    label="Specular"
+                    value={config.gel.specularIntensity}
+                    min={0} max={5} step={0.1}
+                    onChange={(v) => updateGel({ specularIntensity: v })}
+                    tooltip="Surface highlight intensity - reduce to minimize glare"
+                  />
+                  <Slider
+                    label="Env Reflect"
+                    value={config.gel.envMapIntensity}
+                    min={0} max={5} step={0.1}
+                    onChange={(v) => updateGel({ envMapIntensity: v })}
+                    tooltip="Environment reflection strength"
+                  />
+                  <Slider
+                    label="Clearcoat"
+                    value={config.gel.clearcoat}
+                    min={0} max={1} step={0.05}
+                    onChange={(v) => updateGel({ clearcoat: v })}
+                    tooltip="Glossy coating layer - reduce for less shine"
+                  />
+                  <Slider
+                    label="Coat Rough"
+                    value={config.gel.clearcoatRoughness}
+                    min={0} max={1} step={0.05}
+                    onChange={(v) => updateGel({ clearcoatRoughness: v })}
+                    tooltip="Clearcoat roughness - increase to blur reflections"
+                  />
+                  <Slider
+                    label="Roughness"
+                    value={config.gel.roughness}
+                    min={0} max={1} step={0.01}
+                    onChange={(v) => updateGel({ roughness: v })}
+                    tooltip="Surface roughness - increase to diffuse highlights"
+                  />
+                </Section>
+
+                <Section title="Fresnel Control" icon="🔆" defaultOpen badge="v3.7.1">
+                  <Slider
+                    label="Fresnel Power"
+                    value={config.gel.fresnelPower}
+                    min={0.1} max={5} step={0.1}
+                    onChange={(v) => updateGel({ fresnelPower: v })}
+                    tooltip="Edge reflection sharpness - lower = softer edges"
+                  />
+                  <Slider
+                    label="Fresnel Intensity"
+                    value={config.gel.fresnelIntensity}
+                    min={0} max={2} step={0.05}
+                    onChange={(v) => updateGel({ fresnelIntensity: v })}
+                    tooltip="Edge reflection brightness - 0 = no edge glow"
+                  />
+                  <Slider
+                    label="Specular Power"
+                    value={config.gel.specularPower}
+                    min={1} max={10} step={0.5}
+                    onChange={(v) => updateGel({ specularPower: v })}
+                    tooltip="Highlight sharpness - higher = tighter highlights"
+                  />
+                  <Slider
+                    label="Specular Mult"
+                    value={config.gel.specularMultiplier}
+                    min={0} max={2} step={0.05}
+                    onChange={(v) => updateGel({ specularMultiplier: v })}
+                    tooltip="Highlight brightness - 0 = no white highlights"
+                  />
+                </Section>
+
+                <Section title="Shader Effects" icon="🎭" defaultOpen badge="v3.7.2">
+                  <Toggle label="Fresnel Reflection" value={config.gel.fresnelEnabled} onChange={(v) => updateGel({ fresnelEnabled: v })} tooltip="Edge glow effect" />
+                  <Toggle label="Specular Highlights" value={config.gel.specularEnabled} onChange={(v) => updateGel({ specularEnabled: v })} tooltip="White highlight spots" />
+                  <Toggle label="Red Bleed" value={config.gel.redBleedEnabled} onChange={(v) => updateGel({ redBleedEnabled: v })} tooltip="Core color bleeding through gel" />
+                  <Toggle label="Sheen" value={config.gel.sheenEnabled} onChange={(v) => updateGel({ sheenEnabled: v })} tooltip="Fabric-like surface shimmer" />
+                  <Toggle label="Env Reflection" value={config.gel.envReflectionEnabled} onChange={(v) => updateGel({ envReflectionEnabled: v })} tooltip="Environment map reflections" />
+                </Section>
+
+                <Section title="Emission Control" icon="💡">
+                  <Slider
+                    label="Core Emissive"
+                    value={config.core.emissiveIntensity}
+                    min={0} max={5} step={0.1}
+                    onChange={(v) => updateCore({ emissiveIntensity: v })}
+                    tooltip="Inner core glow strength"
+                  />
+                  <Slider
+                    label="Core Metalness"
+                    value={config.core.metalness}
+                    min={0} max={1} step={0.05}
+                    onChange={(v) => updateCore({ metalness: v })}
+                    tooltip="Metallic surface appearance"
+                  />
+                  <Slider
+                    label="Core Roughness"
+                    value={config.core.roughness}
+                    min={0} max={1} step={0.01}
+                    onChange={(v) => updateCore({ roughness: v })}
+                    tooltip="Core surface roughness"
+                  />
                 </Section>
               </>
             )}
