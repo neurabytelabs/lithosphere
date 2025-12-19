@@ -144,15 +144,19 @@ Open the **SHADER STUDIO** panel at the bottom of the screen:
 ## Changelog
 
 <!-- CHANGELOG_START -->
-### v3.5 (2025-12-18) - Sprint 3: Camera Control System
-**New Features:**
+### v3.5 (2025-12-18) - Sprint 3 & 4: Camera Control + UX
+**Sprint 4 - UX & Versioning:**
+- 📋 **Dropdown Menus** - Config (Import/Export/Reset) and Code (TSL) actions consolidated
+- 🏷️ **Version Strategy** - Single Source of Truth (version.ts) for all version references
+- 🎥 **Improved Camera Sync** - More aggressive zoom (+3 units) and target shift (+1.5 Y)
+
+**Sprint 3 - Camera Control:**
 - 🎥 **Panel-Camera Sync** - Camera zooms out and shifts up when panel opens (no overlap)
 - 🎬 **Smooth Camera Animation** - easeOutCubic easing with 60fps transitions
 - 🎯 **Camera Presets** - Default, Close-Up, Wide Shot, Top-Down instant switching
 - 🔒 **Lock Camera** - Toggle to prevent user camera interaction
 - 📐 **Orbit Target Y** - Control vertical position of orbit center
-- ↺ **Reset to Default** - One-click camera reset
-- 📏 **Distance Slider** - Direct camera distance control (was missing)
+- 📏 **Distance Slider** - Direct camera distance control
 
 ### v3.0 (2025-12-18) - Sprint 2: Visual Capture
 **New Features:**
