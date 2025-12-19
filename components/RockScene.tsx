@@ -147,7 +147,7 @@ const RockScene: React.FC = () => {
     envMap: null,
     // Camera animation
     cameraAnimation: null,
-    panelOpenDistance: DEFAULT_CONFIG.camera.distance + 2, // +2 units when panel opens
+    panelOpenDistance: DEFAULT_CONFIG.camera.distance + 3, // +3 units when panel opens
     panelClosedDistance: DEFAULT_CONFIG.camera.distance,
     // Post-processing
     postProcessing: null,
@@ -356,12 +356,14 @@ const RockScene: React.FC = () => {
     const currentTargetY = refs.controls.target.y;
 
     // Calculate target values based on panel state
+    // When panel opens: zoom out MORE and shift orbit center UP significantly
+    // This ensures the orb stays centered in the visible area above the panel
     const targetDistance = isOpen
-      ? currentDistance + 2  // Zoom out +2 units when panel opens
+      ? currentDistance + 3  // Zoom out +3 units when panel opens (more breathing room)
       : refs.panelClosedDistance; // Return to default when panel closes
 
     const targetTargetY = isOpen
-      ? 0.8  // Move target up when panel opens
+      ? 1.5  // Move orbit center UP significantly (orb appears higher on screen)
       : 0;   // Return to center when panel closes
 
     // Start camera animation

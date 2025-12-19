@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
+import { VERSION_SHORT, VERSION_HISTORY } from '../version';
 
 // ============================================
 // === TYPES & INTERFACES ===
@@ -498,79 +499,10 @@ export const PRESETS: Record<string, ShaderConfig> = {
 };
 
 // ============================================
-// === CHANGELOG DATA ===
+// === VERSION INFO ===
 // ============================================
-// This data mirrors README.md changelog section
-// Update both when adding new features
-
-export interface ChangelogEntry {
-  version: string;
-  date: string;
-  title: string;
-  features: { emoji: string; title: string; description: string }[];
-}
-
-export const CHANGELOG: ChangelogEntry[] = [
-  {
-    version: '3.5',
-    date: '2025-12-18',
-    title: 'Camera Control System',
-    features: [
-      { emoji: '🎥', title: 'Panel-Camera Sync', description: 'Camera zooms out when panel opens' },
-      { emoji: '🎯', title: 'Camera Presets', description: 'Default, Close-Up, Wide Shot, Top-Down' },
-      { emoji: '🔒', title: 'Lock Camera', description: 'Toggle to prevent user interaction' },
-      { emoji: '📐', title: 'Orbit Target Y', description: 'Control vertical orbit center' },
-      { emoji: '📏', title: 'Distance Slider', description: 'Direct camera distance control' },
-      { emoji: '↺', title: 'Reset Button', description: 'One-click camera reset' },
-    ],
-  },
-  {
-    version: '3.0',
-    date: '2025-12-18',
-    title: 'Visual Capture',
-    features: [
-      { emoji: '📸', title: 'Screenshot Capture', description: 'PNG or JPEG with quality control' },
-      { emoji: '🎬', title: 'Video Recording', description: 'WebM with configurable bitrate and FPS' },
-      { emoji: '🌍', title: 'HDR Environment', description: 'Load .hdr/.exr files for reflections' },
-      { emoji: '🔲', title: 'Vignette Effect', description: 'Custom TSL post-processing' },
-    ],
-  },
-  {
-    version: '2.5',
-    date: '2025-12-18',
-    title: 'Visual Evolution',
-    features: [
-      { emoji: '✨', title: 'Post-Processing', description: 'Bloom, chromatic aberration, vignette' },
-      { emoji: '📦', title: 'GLTF Import', description: 'Load custom 3D models' },
-      { emoji: '📤', title: 'TSL Code Export', description: 'Copy/download shader code' },
-    ],
-  },
-  {
-    version: '2.0',
-    date: '2025-12-18',
-    title: 'Shader Studio',
-    features: [
-      { emoji: '✨', title: 'Shader Studio Panel', description: 'Professional debug interface inspired by Substance Designer' },
-      { emoji: '🎨', title: '10 Presets', description: 'HAL 9000, Blue Crystal, Toxic Green, Golden Sun, Purple Void + more' },
-      { emoji: '🤖', title: 'Gemini AI Integration', description: 'Natural language shader suggestions' },
-      { emoji: '📦', title: 'Import/Export', description: 'Save and share configurations as JSON' },
-      { emoji: '⌨️', title: 'Keyboard Shortcuts', description: '~ toggle panel, 1-8 switch tabs, Esc close' },
-    ],
-  },
-  {
-    version: '1.0',
-    date: '2025-12-17',
-    title: 'Initial Release',
-    features: [
-      { emoji: '🌐', title: 'WebGPU Rendering', description: 'Three.js with TSL (Three Shading Language)' },
-      { emoji: '🔮', title: 'Dual-Mesh System', description: 'Inner core + outer gel shell' },
-      { emoji: '🎭', title: 'HAL 9000 Aesthetic', description: 'Iconic glowing red orb' },
-      { emoji: '🌊', title: 'MaterialX Noise', description: 'Procedural displacement' },
-      { emoji: '🔄', title: 'Auto-Rotation', description: 'Smooth orbital animation' },
-      { emoji: '💨', title: '60 FPS', description: 'Optimized performance' },
-    ],
-  },
-];
+// IMPORTANT: Version data is now centralized in version.ts (SSOT)
+// Import VERSION_SHORT and VERSION_HISTORY from '../version'
 
 // ============================================
 // === UI COMPONENTS ===
@@ -613,6 +545,76 @@ const Slider: React.FC<SliderProps> = ({
     </div>
   </div>
 );
+
+// Dropdown Menu Component for consolidated actions
+interface DropdownItem {
+  icon: string;
+  label: string;
+  onClick: () => void;
+  color?: string;
+}
+
+interface DropdownProps {
+  icon: string;
+  label: string;
+  items: DropdownItem[];
+  color?: string;
+}
+
+const Dropdown: React.FC<DropdownProps> = ({ icon, label, items, color = 'zinc' }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const colorClasses = {
+    zinc: 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800',
+    purple: 'text-purple-400 hover:text-purple-300 hover:bg-purple-500/10',
+    amber: 'text-amber-400 hover:text-amber-300 hover:bg-amber-500/10',
+  };
+
+  return (
+    <div className="relative" ref={dropdownRef}>
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className={`px-3 py-1.5 text-[10px] ${colorClasses[color as keyof typeof colorClasses]} rounded transition-colors flex items-center gap-1`}
+      >
+        <span>{icon}</span>
+        <span>{label}</span>
+        <span className="text-[8px] opacity-60">{isOpen ? '▲' : '▼'}</span>
+      </button>
+      {isOpen && (
+        <div className="absolute top-full left-0 mt-1 bg-zinc-900 border border-zinc-700 rounded-lg shadow-xl z-50 min-w-[140px] overflow-hidden">
+          {items.map((item, idx) => (
+            <button
+              key={idx}
+              onClick={() => {
+                item.onClick();
+                setIsOpen(false);
+              }}
+              className={`w-full px-3 py-2 text-[10px] text-left flex items-center gap-2 ${
+                item.color === 'red' ? 'text-red-400 hover:bg-red-500/10' :
+                item.color === 'purple' ? 'text-purple-400 hover:bg-purple-500/10' :
+                'text-zinc-300 hover:bg-zinc-800'
+              } transition-colors`}
+            >
+              <span>{item.icon}</span>
+              <span>{item.label}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
 
 interface ColorPickerProps {
   label: string;
@@ -1473,7 +1475,7 @@ const gelMaterial = new MeshPhysicalNodeMaterial({
               <div className="flex items-center gap-2">
                 <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
                 <span className="text-[12px] font-bold text-zinc-200 tracking-wider">SHADER STUDIO</span>
-                <span className="text-[9px] text-zinc-500 font-mono">v2.1</span>
+                <span className="text-[9px] text-zinc-500 font-mono">{VERSION_SHORT}</span>
               </div>
 
               <FPSCounter />
@@ -1498,53 +1500,42 @@ const gelMaterial = new MeshPhysicalNodeMaterial({
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1">
+              {/* Quick Actions */}
               <button
                 onClick={randomize}
                 className="px-3 py-1.5 text-[10px] text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 rounded transition-colors"
                 title="Randomize colors"
               >
-                🎲 Random
+                🎲
               </button>
-              <button
-                onClick={importConfig}
-                className="px-3 py-1.5 text-[10px] text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 rounded transition-colors"
-                title="Import JSON config"
-              >
-                📥 Import
-              </button>
-              <button
-                onClick={exportConfig}
-                className="px-3 py-1.5 text-[10px] text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 rounded transition-colors"
-                title="Export JSON config"
-              >
-                📤 Export
-              </button>
+
+              {/* Config Dropdown */}
+              <Dropdown
+                icon="📦"
+                label="Config"
+                items={[
+                  { icon: '📥', label: 'Import JSON', onClick: importConfig },
+                  { icon: '📤', label: 'Export JSON', onClick: exportConfig },
+                  { icon: '🔄', label: 'Reset All', onClick: () => onConfigChange(DEFAULT_CONFIG), color: 'red' },
+                ]}
+              />
+
+              {/* Code Export Dropdown */}
+              <Dropdown
+                icon="📋"
+                label="Code"
+                color="purple"
+                items={[
+                  { icon: '📋', label: 'Copy TSL', onClick: copyTSLCode, color: 'purple' },
+                  { icon: '💾', label: 'Download .ts', onClick: downloadTSLCode, color: 'purple' },
+                ]}
+              />
+
               <div className="h-4 w-px bg-zinc-700 mx-1" />
-              <button
-                onClick={copyTSLCode}
-                className="px-3 py-1.5 text-[10px] text-purple-400 hover:text-purple-300 hover:bg-purple-500/10 rounded transition-colors"
-                title="Copy TSL shader code"
-              >
-                📋 TSL
-              </button>
-              <button
-                onClick={downloadTSLCode}
-                className="px-3 py-1.5 text-[10px] text-purple-400 hover:text-purple-300 hover:bg-purple-500/10 rounded transition-colors"
-                title="Download TSL shader file"
-              >
-                💾 .ts
-              </button>
-              <div className="h-4 w-px bg-zinc-700 mx-1" />
-              <button
-                onClick={() => onConfigChange(DEFAULT_CONFIG)}
-                className="px-3 py-1.5 text-[10px] text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 rounded transition-colors"
-              >
-                Reset
-              </button>
               <button
                 onClick={() => setIsOpen(false)}
-                className="ml-2 w-7 h-7 flex items-center justify-center text-zinc-400 hover:text-white hover:bg-zinc-700 rounded transition-colors"
+                className="w-7 h-7 flex items-center justify-center text-zinc-400 hover:text-white hover:bg-zinc-700 rounded transition-colors"
                 title="Press Escape"
               >
                 ✕
@@ -2280,7 +2271,7 @@ const gelMaterial = new MeshPhysicalNodeMaterial({
                 <div className="space-y-4">
                   <h3 className="text-[12px] font-bold text-zinc-300 uppercase tracking-wider">Changelog</h3>
 
-                  {CHANGELOG.map((entry, index) => (
+                  {VERSION_HISTORY.map((entry, index) => (
                     <div key={entry.version} className="border border-zinc-800 rounded-lg overflow-hidden">
                       <div className={`px-4 py-2 ${index === 0 ? 'bg-amber-500/10 border-b border-amber-500/20' : 'bg-zinc-900/50 border-b border-zinc-800'}`}>
                         <div className="flex items-center justify-between">
@@ -2290,7 +2281,7 @@ const gelMaterial = new MeshPhysicalNodeMaterial({
                           </span>
                           <span className="text-[10px] text-zinc-500">{entry.date}</span>
                         </div>
-                        <span className="text-[10px] text-zinc-400">{entry.title}</span>
+                        <span className="text-[10px] text-zinc-400">{entry.name}</span>
                       </div>
                       <div className="px-4 py-3 space-y-2 bg-zinc-900/30">
                         {entry.features.map((feature, fIndex) => (
@@ -2330,7 +2321,7 @@ const gelMaterial = new MeshPhysicalNodeMaterial({
               <span><kbd className="px-1 py-0.5 bg-zinc-800 rounded">Esc</kbd> Close</span>
             </div>
             <div>
-              <span>Lithosphere Shader Studio v2.1</span>
+              <span>Lithosphere Shader Studio {VERSION_SHORT}</span>
             </div>
           </div>
         </div>

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import RockScene from './components/RockScene';
 import { checkWebGPUSupport } from './services/webGpuService';
+import { VERSION_SHORT } from './version';
 
 const App: React.FC = () => {
   const [isWebGPUSupported, setIsWebGPUSupported] = useState<boolean | null>(null);
@@ -42,7 +43,7 @@ const App: React.FC = () => {
       <div className="absolute top-0 left-0 w-full p-6 pointer-events-none flex justify-between items-start">
         <div>
           <h1 className="text-white/90 font-bold tracking-widest text-lg font-mono uppercase">
-            Lithosphere <span className="text-xs text-amber-500 align-top">v1.0</span>
+            Lithosphere <span className="text-xs text-amber-500 align-top">{VERSION_SHORT}</span>
           </h1>
           <p className="text-white/40 text-xs font-mono mt-1">
             WebGPU Procedural Generation
