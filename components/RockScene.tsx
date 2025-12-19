@@ -95,6 +95,33 @@ interface InstanceUniforms {
   uNoiseAnimSpeed: any;
 }
 
+// ============================================
+// === PHYSICS SYSTEM (v5.0) ===
+// ============================================
+
+// Trail point for orbit visualization
+interface TrailPoint {
+  position: THREE.Vector3;
+  time: number;
+  velocity: number;
+}
+
+// Physics state for each instance
+interface InstancePhysicsState {
+  velocity: THREE.Vector3;
+  acceleration: THREE.Vector3;
+  mass: number;
+  trail: TrailPoint[];
+}
+
+// Physics configuration for animation loop
+interface PhysicsState {
+  instances: Map<string, InstancePhysicsState>;
+  lastUpdateTime: number;
+  trailGeometries: Map<string, THREE.BufferGeometry>;
+  trailMeshes: Map<string, THREE.Line>;
+}
+
 interface SceneRefs {
   // Legacy single-instance refs (for backwards compatibility)
   coreMesh: THREE.Mesh | null;
@@ -164,6 +191,9 @@ interface SceneRefs {
     redRimLightEnabled: boolean;
     redRimLightIntensity: number;
   };
+
+  // Physics system (v5.0)
+  physicsState: PhysicsState;
 }
 
 const RockScene: React.FC = () => {
@@ -242,6 +272,14 @@ const RockScene: React.FC = () => {
       halBackLightIntensity: DEFAULT_CONFIG.lighting.halBackLightIntensity,
       redRimLightEnabled: DEFAULT_CONFIG.lighting.redRimLightEnabled,
       redRimLightIntensity: DEFAULT_CONFIG.lighting.redRimLightIntensity,
+    },
+
+    // Physics system (v5.0)
+    physicsState: {
+      instances: new Map(),
+      lastUpdateTime: 0,
+      trailGeometries: new Map(),
+      trailMeshes: new Map(),
     },
   });
 
@@ -1287,6 +1325,135 @@ const RockScene: React.FC = () => {
             : Math.sin(elapsed * breatheSpeed + 0.15) * breatheIntensity * 0.75;
           mesh.scale.setScalar(baseScale * (1.0 + gelBreatheFactor));
         });
+
+        // ============================================
+        // === PHYSICS UPDATE (v5.0) ===
+        // ============================================
+        const physicsConfig = configRef.current.physics;
+        if (physicsConfig.enabled && physicsConfig.gravityEnabled) {
+          const physicsState = sceneRefs.current.physicsState;
+          const timeScale = physicsConfig.timeScale;
+          const damping = physicsConfig.damping;
+          const G = physicsConfig.gravityStrength;
+
+          // Get all core meshes as physics bodies
+          const coreMeshArray = Array.from(sceneRefs.current.coreMeshes.entries());
+
+          // Initialize physics state for new instances
+          coreMeshArray.forEach(([id, mesh]) => {
+            if (!physicsState.instances.has(id)) {
+              physicsState.instances.set(id, {
+                velocity: new THREE.Vector3(0, 0, 0),
+                acceleration: new THREE.Vector3(0, 0, 0),
+                mass: mesh.scale.x, // Scale = mass in auto mode
+                trail: [],
+              });
+            }
+          });
+
+          // Calculate gravitational forces between all cores
+          for (let i = 0; i < coreMeshArray.length; i++) {
+            const [id1, mesh1] = coreMeshArray[i];
+            const state1 = physicsState.instances.get(id1);
+            if (!state1) continue;
+
+            // Update mass based on scale (auto mode)
+            if (physicsConfig.massMode === 'auto') {
+              state1.mass = mesh1.scale.x;
+            }
+
+            // Reset acceleration
+            state1.acceleration.set(0, 0, 0);
+
+            for (let j = 0; j < coreMeshArray.length; j++) {
+              if (i === j) continue;
+
+              const [id2, mesh2] = coreMeshArray[j];
+              const state2 = physicsState.instances.get(id2);
+              if (!state2) continue;
+
+              // Newton's gravitational formula: F = G * m1 * m2 / r^2
+              const direction = new THREE.Vector3().subVectors(mesh2.position, mesh1.position);
+              const distance = Math.max(direction.length(), 0.3); // Prevent singularity
+              direction.normalize();
+
+              let forceMagnitude = 0;
+
+              if (physicsConfig.gravityType === 'newton') {
+                // Realistic Newton gravity
+                forceMagnitude = G * state1.mass * state2.mass / (distance * distance);
+              } else if (physicsConfig.gravityType === 'artistic') {
+                // Simplified artistic gravity (linear falloff, capped)
+                forceMagnitude = G * Math.min(state1.mass * state2.mass / distance, 2.0);
+              } else if (physicsConfig.gravityType === 'magnetic') {
+                // Magnetic: attract if close, repel if far
+                const threshold = 1.5;
+                if (distance < threshold) {
+                  forceMagnitude = -G * (threshold - distance) * 0.5; // Repel
+                } else {
+                  forceMagnitude = G * (distance - threshold) * 0.3; // Attract
+                }
+              }
+
+              // Apply force to acceleration (F = ma, so a = F/m)
+              const force = direction.multiplyScalar(forceMagnitude / state1.mass);
+              state1.acceleration.add(force);
+            }
+          }
+
+          // Update velocities and positions
+          const physicsDeltaTime = delta * timeScale;
+          coreMeshArray.forEach(([id, mesh]) => {
+            const state = physicsState.instances.get(id);
+            if (!state) return;
+
+            // Update velocity: v = v + a * dt
+            state.velocity.add(state.acceleration.clone().multiplyScalar(physicsDeltaTime));
+
+            // Apply damping: v = v * (1 - damping)
+            state.velocity.multiplyScalar(1 - damping);
+
+            // Update position: p = p + v * dt
+            mesh.position.add(state.velocity.clone().multiplyScalar(physicsDeltaTime));
+
+            // Boundary handling
+            if (physicsConfig.boundaryMode !== 'none') {
+              const radius = physicsConfig.boundaryRadius;
+              const distFromCenter = mesh.position.length();
+
+              if (distFromCenter > radius) {
+                if (physicsConfig.boundaryMode === 'bounce') {
+                  // Reflect velocity
+                  const normal = mesh.position.clone().normalize();
+                  state.velocity.reflect(normal);
+                  mesh.position.setLength(radius - 0.1);
+                } else if (physicsConfig.boundaryMode === 'wrap') {
+                  // Wrap to opposite side
+                  mesh.position.multiplyScalar(-0.9);
+                } else if (physicsConfig.boundaryMode === 'contain') {
+                  // Stop at boundary
+                  mesh.position.setLength(radius);
+                  state.velocity.set(0, 0, 0);
+                }
+              }
+            }
+
+            // Update trails (if enabled)
+            if (physicsConfig.trailsEnabled) {
+              state.trail.push({
+                position: mesh.position.clone(),
+                time: elapsed,
+                velocity: state.velocity.length(),
+              });
+
+              // Limit trail length
+              while (state.trail.length > physicsConfig.trailLength) {
+                state.trail.shift();
+              }
+            }
+          });
+        }
+        // === END PHYSICS UPDATE ===
 
         // Dynamic lighting (can be toggled)
         if (animConfig.dynamicLighting) {

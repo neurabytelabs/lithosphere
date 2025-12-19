@@ -154,6 +154,78 @@ export interface EnvironmentConfig {
 }
 
 // ============================================
+// === PHYSICS SYSTEM (v5.0 - Three-Body) ===
+// ============================================
+
+export type GravityType = 'newton' | 'artistic' | 'magnetic';
+export type MassMode = 'auto' | 'manual';
+export type BoundaryMode = 'none' | 'wrap' | 'bounce' | 'contain';
+export type CollisionMode = 'none' | 'bounce' | 'merge' | 'scatter';
+export type GelInteractionMode = 'collision' | 'deformation' | 'merge' | 'all';
+export type TrailColorMode = 'inherit' | 'velocity' | 'custom';
+
+// Physics configuration for gravity and interactions
+export interface PhysicsConfig {
+  // Master toggle
+  enabled: boolean;
+
+  // Gravity settings
+  gravityEnabled: boolean;
+  gravityStrength: number;        // 0.0 - 2.0
+  gravityType: GravityType;
+
+  // Mass settings
+  massMode: MassMode;             // 'auto' = scale-based mass
+
+  // Simulation
+  damping: number;                // 0.0 - 1.0 (velocity decay)
+  timeScale: number;              // 0.1 - 5.0 (simulation speed)
+
+  // Boundaries
+  boundaryMode: BoundaryMode;
+  boundaryRadius: number;         // World boundary radius
+
+  // Gel-Gel Interaction
+  gelInteractionEnabled: boolean;
+  gelInteractionMode: GelInteractionMode;
+  gelInteractionStrength: number; // 0.0 - 1.0
+  gelInteractionRadius: number;   // Detection radius
+
+  // Core-Gel Attraction
+  coreAttractionEnabled: boolean;
+  coreAttractionStrength: number;
+
+  // Collision
+  collisionMode: CollisionMode;
+  collisionEffect: boolean;       // Visual flash on collision
+
+  // Trails
+  trailsEnabled: boolean;
+  trailLength: number;            // 10 - 500 points
+  trailFade: boolean;
+  trailWidth: number;
+  trailColorMode: TrailColorMode;
+  trailColor: [number, number, number];
+
+  // Visualization
+  showEnergyBars: boolean;
+  showVelocityVectors: boolean;
+  showForceVectors: boolean;
+
+  // Three-Body Chaos
+  chaosEnabled: boolean;          // Auto-enables with 3+ cores
+}
+
+// Physics state for each instance (stored separately from config)
+export interface InstancePhysicsState {
+  velocity: [number, number, number];
+  acceleration: [number, number, number];
+  mass: number;
+  // Trail points (position history)
+  trail: Array<{ position: [number, number, number]; time: number }>;
+}
+
+// ============================================
 // === MULTI-INSTANCE SYSTEM (v4.0) ===
 // ============================================
 
@@ -432,6 +504,9 @@ export interface ShaderConfig {
   postProcess: PostProcessConfig;
   environment: EnvironmentConfig;
   meshSource: MeshSource;
+
+  // Physics system (v5.0)
+  physics: PhysicsConfig;
 }
 
 // Primary core/gel instance IDs (used as defaults)
@@ -572,6 +647,58 @@ export const DEFAULT_CONFIG: ShaderConfig = {
     type: 'builtin',
     builtinType: 'icosahedron',
     scale: 1.0,
+  },
+
+  // Physics system (v5.0 - Three-Body)
+  physics: {
+    // Master toggle
+    enabled: true,
+
+    // Gravity settings
+    gravityEnabled: false,        // Start disabled for safety
+    gravityStrength: 0.5,
+    gravityType: 'newton',
+
+    // Mass settings
+    massMode: 'auto',
+
+    // Simulation
+    damping: 0.02,
+    timeScale: 1.0,
+
+    // Boundaries
+    boundaryMode: 'bounce',
+    boundaryRadius: 5.0,
+
+    // Gel-Gel Interaction
+    gelInteractionEnabled: false,
+    gelInteractionMode: 'collision',
+    gelInteractionStrength: 0.3,
+    gelInteractionRadius: 0.5,
+
+    // Core-Gel Attraction
+    coreAttractionEnabled: false,
+    coreAttractionStrength: 0.2,
+
+    // Collision
+    collisionMode: 'bounce',
+    collisionEffect: true,
+
+    // Trails
+    trailsEnabled: false,
+    trailLength: 100,
+    trailFade: true,
+    trailWidth: 2,
+    trailColorMode: 'inherit',
+    trailColor: [1.0, 0.5, 0.0],
+
+    // Visualization
+    showEnergyBars: false,
+    showVelocityVectors: false,
+    showForceVectors: false,
+
+    // Three-Body Chaos
+    chaosEnabled: false,
   },
 };
 
@@ -1672,6 +1799,11 @@ const DebugPanel: React.FC<DebugPanelProps> = ({ config, onConfigChange, onMeshI
     onConfigChange({ ...config, environment: { ...config.environment, ...updates } });
   }, [config, onConfigChange]);
 
+  // Physics update helper (v5.0)
+  const updatePhysics = useCallback((updates: Partial<PhysicsConfig>) => {
+    onConfigChange({ ...config, physics: { ...config.physics, ...updates } });
+  }, [config, onConfigChange]);
+
   const handleEnvFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file && onEnvMapImport) {
@@ -2127,15 +2259,16 @@ const gelMaterial = new MeshPhysicalNodeMaterial({
 
   const tabs = [
     { id: 'instances', label: 'Multi', icon: '🌐', shortcut: '1' }, // v4.0 - Multi-instance
-    { id: 'core', label: 'Core', icon: '🔴', shortcut: '2' },
-    { id: 'gel', label: 'Gel', icon: '💎', shortcut: '3' },
-    { id: 'lighting', label: 'Light', icon: '💡', shortcut: '4' },
-    { id: 'animation', label: 'Anim', icon: '🎬', shortcut: '5' },
-    { id: 'shape', label: 'Shape', icon: '🔷', shortcut: '6' },
-    { id: 'camera', label: 'Camera', icon: '📷', shortcut: '7' },
-    { id: 'effects', label: 'Effects', icon: '✨', shortcut: '8' },
-    { id: 'capture', label: 'Capture', icon: '📸', shortcut: '9' },
-    { id: 'presets', label: 'Presets', icon: '📦', shortcut: '0' },
+    { id: 'physics', label: 'Physics', icon: '🌌', shortcut: '2' }, // v5.0 - Three-Body Physics
+    { id: 'core', label: 'Core', icon: '🔴', shortcut: '3' },
+    { id: 'gel', label: 'Gel', icon: '💎', shortcut: '4' },
+    { id: 'lighting', label: 'Light', icon: '💡', shortcut: '5' },
+    { id: 'animation', label: 'Anim', icon: '🎬', shortcut: '6' },
+    { id: 'shape', label: 'Shape', icon: '🔷', shortcut: '7' },
+    { id: 'camera', label: 'Camera', icon: '📷', shortcut: '8' },
+    { id: 'effects', label: 'Effects', icon: '✨', shortcut: '9' },
+    { id: 'capture', label: 'Capture', icon: '📸', shortcut: '0' },
+    { id: 'presets', label: 'Presets', icon: '📦', shortcut: '' },
     { id: 'ai', label: 'AI', icon: '🤖', shortcut: '' },
     { id: 'info', label: 'Info', icon: 'ℹ️', shortcut: '' },
   ] as const;
@@ -2617,6 +2750,316 @@ const gelMaterial = new MeshPhysicalNodeMaterial({
                 {/* Info */}
                 <div className="text-[10px] text-zinc-500 text-center pt-2 border-t border-zinc-800">
                   Multi-Instance System v4.0-alpha • Max {MAX_CORES} cores, {MAX_GELS} gels
+                </div>
+              </>
+            )}
+
+            {/* Physics Tab - Three-Body System (v5.0) */}
+            {activeTab === 'physics' && (
+              <>
+                {/* Master Physics Toggle */}
+                <Section title="Physics Engine" icon="⚡" defaultOpen badge="v5.0">
+                  <div className="p-3 bg-gradient-to-r from-purple-500/10 to-blue-500/10 rounded-lg border border-purple-500/30">
+                    <Toggle
+                      label="Enable Physics"
+                      value={config.physics.enabled}
+                      onChange={(v) => updatePhysics({ enabled: v })}
+                    />
+                    <p className="text-[10px] text-zinc-500 mt-2">
+                      Master toggle for all physics simulation
+                    </p>
+                  </div>
+                </Section>
+
+                {/* Gravity System */}
+                <Section title="Gravity" icon="🌌" defaultOpen>
+                  <Toggle
+                    label="Enable Gravity"
+                    value={config.physics.gravityEnabled}
+                    onChange={(v) => updatePhysics({ gravityEnabled: v })}
+                  />
+                  {config.physics.gravityEnabled && (
+                    <>
+                      <Slider
+                        label="Strength"
+                        value={config.physics.gravityStrength}
+                        min={0} max={2} step={0.05}
+                        onChange={(v) => updatePhysics({ gravityStrength: v })}
+                        tooltip="Gravitational force multiplier"
+                      />
+                      <div className="mt-2">
+                        <label className="text-[10px] text-zinc-400 block mb-1">Gravity Type</label>
+                        <div className="grid grid-cols-3 gap-1">
+                          {(['newton', 'artistic', 'magnetic'] as const).map((type) => (
+                            <button
+                              key={type}
+                              onClick={() => updatePhysics({ gravityType: type })}
+                              className={`px-2 py-1.5 rounded text-[10px] font-medium transition-all
+                                ${config.physics.gravityType === type
+                                  ? 'bg-purple-500/30 border-purple-500 text-purple-300'
+                                  : 'bg-zinc-800 border-zinc-700 text-zinc-400 hover:border-zinc-600'
+                                } border`}
+                            >
+                              {type === 'newton' && '🍎'} {type === 'artistic' && '✨'} {type === 'magnetic' && '🧲'}
+                              <span className="ml-1 capitalize">{type}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="mt-2">
+                        <label className="text-[10px] text-zinc-400 block mb-1">Mass Mode</label>
+                        <div className="grid grid-cols-2 gap-1">
+                          {(['auto', 'manual'] as const).map((mode) => (
+                            <button
+                              key={mode}
+                              onClick={() => updatePhysics({ massMode: mode })}
+                              className={`px-2 py-1.5 rounded text-[10px] font-medium transition-all
+                                ${config.physics.massMode === mode
+                                  ? 'bg-blue-500/30 border-blue-500 text-blue-300'
+                                  : 'bg-zinc-800 border-zinc-700 text-zinc-400 hover:border-zinc-600'
+                                } border`}
+                            >
+                              {mode === 'auto' ? '⚖️ Auto (Scale=Mass)' : '🎚️ Manual'}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </Section>
+
+                {/* Simulation Settings */}
+                <Section title="Simulation" icon="⏱️" defaultOpen>
+                  <Slider
+                    label="Time Scale"
+                    value={config.physics.timeScale}
+                    min={0.1} max={5} step={0.1}
+                    onChange={(v) => updatePhysics({ timeScale: v })}
+                    tooltip="Simulation speed multiplier"
+                  />
+                  <Slider
+                    label="Damping"
+                    value={config.physics.damping}
+                    min={0} max={0.2} step={0.005}
+                    onChange={(v) => updatePhysics({ damping: v })}
+                    tooltip="Velocity decay (friction)"
+                  />
+                </Section>
+
+                {/* Boundaries */}
+                <Section title="Boundaries" icon="📦">
+                  <div className="mb-2">
+                    <label className="text-[10px] text-zinc-400 block mb-1">Boundary Mode</label>
+                    <div className="grid grid-cols-2 gap-1">
+                      {(['none', 'bounce', 'wrap', 'contain'] as const).map((mode) => (
+                        <button
+                          key={mode}
+                          onClick={() => updatePhysics({ boundaryMode: mode })}
+                          className={`px-2 py-1.5 rounded text-[10px] font-medium transition-all
+                            ${config.physics.boundaryMode === mode
+                              ? 'bg-amber-500/30 border-amber-500 text-amber-300'
+                              : 'bg-zinc-800 border-zinc-700 text-zinc-400 hover:border-zinc-600'
+                            } border`}
+                        >
+                          {mode === 'none' && '🚫'} {mode === 'bounce' && '🏀'} {mode === 'wrap' && '🔄'} {mode === 'contain' && '📥'}
+                          <span className="ml-1 capitalize">{mode}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  {config.physics.boundaryMode !== 'none' && (
+                    <Slider
+                      label="Boundary Radius"
+                      value={config.physics.boundaryRadius}
+                      min={2} max={10} step={0.5}
+                      onChange={(v) => updatePhysics({ boundaryRadius: v })}
+                      tooltip="World boundary size"
+                    />
+                  )}
+                </Section>
+
+                {/* Gel Interaction */}
+                <Section title="Gel Interaction" icon="💎">
+                  <Toggle
+                    label="Enable Gel-Gel Physics"
+                    value={config.physics.gelInteractionEnabled}
+                    onChange={(v) => updatePhysics({ gelInteractionEnabled: v })}
+                  />
+                  {config.physics.gelInteractionEnabled && (
+                    <>
+                      <div className="mt-2">
+                        <label className="text-[10px] text-zinc-400 block mb-1">Interaction Mode</label>
+                        <div className="grid grid-cols-2 gap-1">
+                          {(['collision', 'deformation', 'merge', 'all'] as const).map((mode) => (
+                            <button
+                              key={mode}
+                              onClick={() => updatePhysics({ gelInteractionMode: mode })}
+                              className={`px-2 py-1.5 rounded text-[10px] font-medium transition-all
+                                ${config.physics.gelInteractionMode === mode
+                                  ? 'bg-cyan-500/30 border-cyan-500 text-cyan-300'
+                                  : 'bg-zinc-800 border-zinc-700 text-zinc-400 hover:border-zinc-600'
+                                } border`}
+                            >
+                              {mode === 'collision' && '💥'} {mode === 'deformation' && '🫠'}
+                              {mode === 'merge' && '🫧'} {mode === 'all' && '✨'}
+                              <span className="ml-1 capitalize">{mode}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <Slider
+                        label="Strength"
+                        value={config.physics.gelInteractionStrength}
+                        min={0} max={1} step={0.05}
+                        onChange={(v) => updatePhysics({ gelInteractionStrength: v })}
+                        tooltip="Interaction force multiplier"
+                      />
+                      <Slider
+                        label="Radius"
+                        value={config.physics.gelInteractionRadius}
+                        min={0.1} max={2} step={0.1}
+                        onChange={(v) => updatePhysics({ gelInteractionRadius: v })}
+                        tooltip="Interaction detection radius"
+                      />
+                    </>
+                  )}
+                </Section>
+
+                {/* Core-Gel Attraction */}
+                <Section title="Core Attraction" icon="🧲">
+                  <Toggle
+                    label="Gels Attracted to Cores"
+                    value={config.physics.coreAttractionEnabled}
+                    onChange={(v) => updatePhysics({ coreAttractionEnabled: v })}
+                  />
+                  {config.physics.coreAttractionEnabled && (
+                    <Slider
+                      label="Attraction Strength"
+                      value={config.physics.coreAttractionStrength}
+                      min={0} max={1} step={0.05}
+                      onChange={(v) => updatePhysics({ coreAttractionStrength: v })}
+                      tooltip="How strongly gels are attracted to cores"
+                    />
+                  )}
+                </Section>
+
+                {/* Orbit Trails */}
+                <Section title="Orbit Trails" icon="🎨">
+                  <Toggle
+                    label="Show Trails"
+                    value={config.physics.trailsEnabled}
+                    onChange={(v) => updatePhysics({ trailsEnabled: v })}
+                  />
+                  {config.physics.trailsEnabled && (
+                    <>
+                      <Slider
+                        label="Trail Length"
+                        value={config.physics.trailLength}
+                        min={10} max={500} step={10}
+                        onChange={(v) => updatePhysics({ trailLength: v })}
+                        tooltip="Number of trail points"
+                      />
+                      <Slider
+                        label="Trail Width"
+                        value={config.physics.trailWidth}
+                        min={1} max={5} step={0.5}
+                        onChange={(v) => updatePhysics({ trailWidth: v })}
+                        tooltip="Trail line thickness"
+                      />
+                      <Toggle
+                        label="Fade Trail"
+                        value={config.physics.trailFade}
+                        onChange={(v) => updatePhysics({ trailFade: v })}
+                      />
+                      <div className="mt-2">
+                        <label className="text-[10px] text-zinc-400 block mb-1">Trail Color Mode</label>
+                        <div className="grid grid-cols-3 gap-1">
+                          {(['inherit', 'velocity', 'custom'] as const).map((mode) => (
+                            <button
+                              key={mode}
+                              onClick={() => updatePhysics({ trailColorMode: mode })}
+                              className={`px-2 py-1.5 rounded text-[10px] font-medium transition-all
+                                ${config.physics.trailColorMode === mode
+                                  ? 'bg-orange-500/30 border-orange-500 text-orange-300'
+                                  : 'bg-zinc-800 border-zinc-700 text-zinc-400 hover:border-zinc-600'
+                                } border`}
+                            >
+                              {mode === 'inherit' && '🎨'} {mode === 'velocity' && '🚀'} {mode === 'custom' && '🖌️'}
+                              <span className="ml-1 capitalize">{mode}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </Section>
+
+                {/* Collision */}
+                <Section title="Collision" icon="💥">
+                  <div className="mb-2">
+                    <label className="text-[10px] text-zinc-400 block mb-1">Collision Mode</label>
+                    <div className="grid grid-cols-2 gap-1">
+                      {(['none', 'bounce', 'merge', 'scatter'] as const).map((mode) => (
+                        <button
+                          key={mode}
+                          onClick={() => updatePhysics({ collisionMode: mode })}
+                          className={`px-2 py-1.5 rounded text-[10px] font-medium transition-all
+                            ${config.physics.collisionMode === mode
+                              ? 'bg-red-500/30 border-red-500 text-red-300'
+                              : 'bg-zinc-800 border-zinc-700 text-zinc-400 hover:border-zinc-600'
+                            } border`}
+                        >
+                          {mode === 'none' && '🚫'} {mode === 'bounce' && '🏀'}
+                          {mode === 'merge' && '🫧'} {mode === 'scatter' && '💫'}
+                          <span className="ml-1 capitalize">{mode}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  {config.physics.collisionMode !== 'none' && (
+                    <Toggle
+                      label="Collision Effect (Flash)"
+                      value={config.physics.collisionEffect}
+                      onChange={(v) => updatePhysics({ collisionEffect: v })}
+                    />
+                  )}
+                </Section>
+
+                {/* Visualization */}
+                <Section title="Visualization" icon="📊">
+                  <Toggle
+                    label="Energy Bars"
+                    value={config.physics.showEnergyBars}
+                    onChange={(v) => updatePhysics({ showEnergyBars: v })}
+                  />
+                  <Toggle
+                    label="Velocity Vectors"
+                    value={config.physics.showVelocityVectors}
+                    onChange={(v) => updatePhysics({ showVelocityVectors: v })}
+                  />
+                  <Toggle
+                    label="Force Vectors"
+                    value={config.physics.showForceVectors}
+                    onChange={(v) => updatePhysics({ showForceVectors: v })}
+                  />
+                </Section>
+
+                {/* Three-Body Chaos */}
+                <Section title="Three-Body Chaos" icon="🌀">
+                  <Toggle
+                    label="Enable Chaos Mode"
+                    value={config.physics.chaosEnabled}
+                    onChange={(v) => updatePhysics({ chaosEnabled: v })}
+                  />
+                  <p className="text-[10px] text-zinc-500 mt-2">
+                    Activates chaotic dynamics when 3+ cores are present.
+                    Warning: May cause unpredictable but beautiful behavior!
+                  </p>
+                </Section>
+
+                {/* Info */}
+                <div className="text-[10px] text-zinc-500 text-center pt-2 border-t border-zinc-800">
+                  Physics System v5.0 "Three-Body" • F = G×m₁×m₂/r²
                 </div>
               </>
             )}

@@ -11,9 +11,9 @@
  * - PATCH: Bug fixes, small improvements
  */
 
-export const VERSION = '4.0.0-rc1';
-export const VERSION_SHORT = 'v4.0.0-RC1';
-export const VERSION_NAME = 'Multiverse';
+export const VERSION = '5.0.0-alpha.1';
+export const VERSION_SHORT = 'v5.0.0-α1';
+export const VERSION_NAME = 'Three-Body';
 export const BUILD_DATE = '2025-12-19';
 
 // Version history for changelog display
@@ -25,6 +25,21 @@ export interface VersionEntry {
 }
 
 export const VERSION_HISTORY: VersionEntry[] = [
+  {
+    version: '5.0.0-alpha.1',
+    date: '2025-12-19',
+    name: 'Three-Body',
+    features: [
+      { emoji: '🌌', title: 'Physics Engine', description: 'Full gravity simulation with Newton, Artistic, and Magnetic modes' },
+      { emoji: '⚡', title: 'Gravity System', description: 'Cores attract each other with configurable gravitational force' },
+      { emoji: '📦', title: 'Boundary System', description: 'Bounce, wrap, or contain objects within world boundaries' },
+      { emoji: '💎', title: 'Gel Interaction', description: 'Collision, deformation, and merge modes (UI ready)' },
+      { emoji: '🎨', title: 'Orbit Trails', description: 'Trail visualization for object paths (UI ready)' },
+      { emoji: '🌀', title: 'Three-Body Chaos', description: 'Chaotic dynamics with 3+ cores' },
+      { emoji: '⚖️', title: 'Mass System', description: 'Auto (scale-based) or manual mass for each instance' },
+      { emoji: '⏱️', title: 'Time Scale', description: 'Control simulation speed from slow-mo to fast-forward' },
+    ],
+  },
   {
     version: '4.0.0-rc1',
     date: '2025-12-19',
