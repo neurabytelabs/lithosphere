@@ -144,6 +144,14 @@ Open the **SHADER STUDIO** panel at the bottom of the screen:
 ## Changelog
 
 <!-- CHANGELOG_START -->
+### v3.6 (2025-12-19) - Sprint 5: Right-Side Panel
+**New Features:**
+- 📱 **Right-Side Panel** - Panel moved from bottom to right side for better UX
+- 🎛️ **Vertical Tab Sidebar** - Icon + label tabs in a vertical layout
+- 📜 **Scrollable Content** - Full-height scrollable content area
+- ❌ **No Camera Zoom** - Removed camera zoom-out when panel opens (not needed with right layout)
+- 🎨 **Compact UI** - Optimized all controls for narrow panel width
+
 ### v3.5 (2025-12-18) - Sprint 3 & 4: Camera Control + UX
 **Sprint 4 - UX & Versioning:**
 - 📋 **Dropdown Menus** - Config (Import/Export/Reset) and Code (TSL) actions consolidated

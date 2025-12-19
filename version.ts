@@ -11,10 +11,10 @@
  * - PATCH: Bug fixes, small improvements
  */
 
-export const VERSION = '3.5.0';
-export const VERSION_SHORT = 'v3.5';
-export const VERSION_NAME = 'Camera Control System';
-export const BUILD_DATE = '2025-12-18';
+export const VERSION = '3.6.0';
+export const VERSION_SHORT = 'v3.6';
+export const VERSION_NAME = 'Right-Side Panel';
+export const BUILD_DATE = '2025-12-19';
 
 // Version history for changelog display
 export interface VersionEntry {
@@ -25,6 +25,17 @@ export interface VersionEntry {
 }
 
 export const VERSION_HISTORY: VersionEntry[] = [
+  {
+    version: '3.6.0',
+    date: '2025-12-19',
+    name: 'Right-Side Panel',
+    features: [
+      { emoji: '📱', title: 'Right-Side Panel', description: 'Panel moved from bottom to right side' },
+      { emoji: '🎛️', title: 'Vertical Tab Sidebar', description: 'Icon + label tabs in vertical layout' },
+      { emoji: '📜', title: 'Scrollable Content', description: 'Full-height scrollable content area' },
+      { emoji: '🎨', title: 'Compact UI', description: 'Optimized controls for narrow panel' },
+    ],
+  },
   {
     version: '3.5.0',
     date: '2025-12-18',
