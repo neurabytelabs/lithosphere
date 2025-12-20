@@ -144,6 +144,34 @@ Open the **SHADER STUDIO** panel at the bottom of the screen:
 ## Changelog
 
 <!-- CHANGELOG_START -->
+### v5.0.0-alpha.1 (2025-12-19) - Three-Body Problem
+**Physics Engine Sprint 1 - Foundation Complete!**
+- 🌌 **Physics Engine** - Full N-body gravity simulation (Newton's F = Gm₁m₂/r²)
+- ⚡ **Gravity Modes** - Newton (realistic), Artistic (exaggerated), Magnetic (attract/repel)
+- 📦 **Boundary System** - Bounce, Wrap, or Contain objects within world boundaries
+- 💎 **Gel Interaction** - Collision, Deformation, and Merge modes (UI ready)
+- 🎨 **Orbit Trails** - Trail visualization for object paths (UI ready)
+- 🌀 **Three-Body Chaos** - Chaotic dynamics with 3+ cores
+- ⚖️ **Mass System** - Auto (scale-based) or manual mass for each instance
+- ⏱️ **Time Scale** - Control simulation speed from 0.1x slow-mo to 3x fast-forward
+
+### v4.0.0-rc1 (2025-12-19) - Multiverse
+**Multi-Core & Gel System**
+- 🌐 **Multi-Core System** - Create and manage up to 10 core instances
+- 💎 **Multi-Gel System** - Create and manage up to 10 gel instances
+- 📐 **Instance Transforms** - Position, rotation, and scale for each instance
+- 🔗 **Core-Gel Linking** - Gels follow linked core position automatically
+- ✨ **Arrangement Presets** - 6 presets: Single, Binary, Orbital, Triangle, Stack, Cluster
+- 📋 **Duplicate Instances** - Clone any core or gel with one click
+- 🎭 **Animation Sync** - Synchronized, independent, or staggered modes
+- 👁️ **Instance Visibility** - Toggle each instance on/off independently
+
+### v3.7.x (2025-12-19) - Master Light Control
+**Light & Shader Toggles**
+- 💡 **9 Light Toggles** - On/off for every light: Key, Fill, Top, Rim 1&2, HAL Core/Back, Red Rim, Ambient
+- 🎭 **Shader Effect Toggles** - Fresnel, Specular, Red Bleed, Sheen, Env Reflection
+- 🔆 **Fresnel/Specular Control** - Adjustable power & intensity for edge glow and highlights
+
 ### v3.6 (2025-12-19) - Sprint 5: Right-Side Panel
 **New Features:**
 - 📱 **Right-Side Panel** - Panel moved from bottom to right side for better UX
