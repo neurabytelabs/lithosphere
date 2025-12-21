@@ -11,10 +11,10 @@
  * - PATCH: Bug fixes, small improvements
  */
 
-export const VERSION = '5.0.0-alpha.1';
-export const VERSION_SHORT = 'v5.0.0-α1';
+export const VERSION = '5.0.0-alpha.2';
+export const VERSION_SHORT = 'v5.0.0-α2';
 export const VERSION_NAME = 'Three-Body';
-export const BUILD_DATE = '2025-12-19';
+export const BUILD_DATE = '2025-12-21';
 
 // Version history for changelog display
 export interface VersionEntry {
@@ -25,6 +25,15 @@ export interface VersionEntry {
 }
 
 export const VERSION_HISTORY: VersionEntry[] = [
+  {
+    version: '5.0.0-alpha.2',
+    date: '2025-12-21',
+    name: 'Three-Body',
+    features: [
+      { emoji: '🌌', title: 'Sprint 2 Start', description: 'Continuing the Three-Body Problem implementation' },
+      { emoji: '🔧', title: 'Improvements', description: 'Bug fixes and performance optimizations' },
+    ],
+  },
   {
     version: '5.0.0-alpha.1',
     date: '2025-12-19',
