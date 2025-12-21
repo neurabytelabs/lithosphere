@@ -30,8 +30,14 @@ export const VERSION_HISTORY: VersionEntry[] = [
     date: '2025-12-21',
     name: 'Three-Body',
     features: [
-      { emoji: '🌌', title: 'Sprint 2 Start', description: 'Continuing the Three-Body Problem implementation' },
-      { emoji: '🔧', title: 'Improvements', description: 'Bug fixes and performance optimizations' },
+      { emoji: '🎨', title: 'Trail Rendering', description: 'Orbit visualization with velocity-based color gradients (blue→red)' },
+      { emoji: '💥', title: 'Collision System', description: 'Sphere-sphere detection with bounce, merge, and scatter modes' },
+      { emoji: '🎯', title: 'Vector Visualization', description: 'Velocity (green) and force (orange) arrows for physics debugging' },
+      { emoji: '📊', title: 'Energy Calculations', description: 'Kinetic, potential, and total system energy tracking' },
+      { emoji: '∞', title: 'Figure-8 Preset', description: 'Famous stable 3-body orbit discovered by Moore (1993)' },
+      { emoji: '☀', title: 'Trisolaran Preset', description: 'Liu Cixin inspired chaotic three-sun system' },
+      { emoji: '🦋', title: 'Butterfly Effect', description: 'Two nearly identical systems diverging over time' },
+      { emoji: '△', title: 'Lagrange Points', description: 'L4/L5 equilibrium demonstration' },
     ],
   },
   {
