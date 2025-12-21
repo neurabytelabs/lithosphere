@@ -28,6 +28,42 @@ import DebugPanel, {
   getSelectedGel,
 } from './DebugPanel';
 
+// ============================================
+// === SPRINT 2 SERVICES (v5.0.0-alpha.2) ===
+// ============================================
+import {
+  TrailSystem,
+  TrailConfig,
+  DEFAULT_TRAIL_CONFIG,
+  createTrailSystem,
+  updateTrailGeometry,
+  clearAllTrails,
+} from '../services/trailService';
+import {
+  CollisionConfig,
+  CollisionEvent,
+  InstancePhysics,
+  DEFAULT_COLLISION_CONFIG,
+  processCollisions,
+  createCollisionEffect,
+} from '../services/collisionService';
+import {
+  VectorSystem,
+  VectorConfig,
+  DEFAULT_VECTOR_CONFIG,
+  createVectorSystem,
+  updateVelocityVector,
+  updateForceVector,
+  clearAllVectors,
+  calculateTotalEnergy,
+} from '../services/vectorVisualizationService';
+import {
+  PHYSICS_PRESETS,
+  getPresetById,
+  applyPreset,
+  PhysicsPreset,
+} from '../services/physicsPresets';
+
 const {
   positionLocal,
   normalLocal,
@@ -122,6 +158,14 @@ interface PhysicsState {
   trailMeshes: Map<string, THREE.Line>;
 }
 
+// Collision effect for visualization
+interface CollisionEffectState {
+  position: THREE.Vector3;
+  intensity: number;
+  startTime: number;
+  duration: number;
+}
+
 interface SceneRefs {
   // Legacy single-instance refs (for backwards compatibility)
   coreMesh: THREE.Mesh | null;
@@ -194,6 +238,19 @@ interface SceneRefs {
 
   // Physics system (v5.0)
   physicsState: PhysicsState;
+
+  // Sprint 2 Systems (v5.0.0-alpha.2)
+  trailSystem: TrailSystem;
+  vectorSystem: VectorSystem;
+  collisionConfig: CollisionConfig;
+  trailConfig: TrailConfig;
+  vectorConfig: VectorConfig;
+  collisionEffects: CollisionEffectState[];
+  energyStats: {
+    kinetic: number;
+    potential: number;
+    total: number;
+  };
 }
 
 const RockScene: React.FC = () => {
@@ -281,6 +338,15 @@ const RockScene: React.FC = () => {
       trailGeometries: new Map(),
       trailMeshes: new Map(),
     },
+
+    // Sprint 2 Systems (v5.0.0-alpha.2)
+    trailSystem: createTrailSystem(),
+    vectorSystem: createVectorSystem(),
+    collisionConfig: { ...DEFAULT_COLLISION_CONFIG },
+    trailConfig: { ...DEFAULT_TRAIL_CONFIG },
+    vectorConfig: { ...DEFAULT_VECTOR_CONFIG },
+    collisionEffects: [],
+    energyStats: { kinetic: 0, potential: 0, total: 0 },
   });
 
   // Update scene when config changes
@@ -1404,17 +1470,17 @@ const RockScene: React.FC = () => {
           // Update velocities and positions
           const physicsDeltaTime = delta * timeScale;
           coreMeshArray.forEach(([id, mesh]) => {
-            const state = physicsState.instances.get(id);
-            if (!state) return;
+            const instanceState = physicsState.instances.get(id);
+            if (!instanceState) return;
 
             // Update velocity: v = v + a * dt
-            state.velocity.add(state.acceleration.clone().multiplyScalar(physicsDeltaTime));
+            instanceState.velocity.add(instanceState.acceleration.clone().multiplyScalar(physicsDeltaTime));
 
             // Apply damping: v = v * (1 - damping)
-            state.velocity.multiplyScalar(1 - damping);
+            instanceState.velocity.multiplyScalar(1 - damping);
 
             // Update position: p = p + v * dt
-            mesh.position.add(state.velocity.clone().multiplyScalar(physicsDeltaTime));
+            mesh.position.add(instanceState.velocity.clone().multiplyScalar(physicsDeltaTime));
 
             // Boundary handling
             if (physicsConfig.boundaryMode !== 'none') {
@@ -1425,7 +1491,7 @@ const RockScene: React.FC = () => {
                 if (physicsConfig.boundaryMode === 'bounce') {
                   // Reflect velocity
                   const normal = mesh.position.clone().normalize();
-                  state.velocity.reflect(normal);
+                  instanceState.velocity.reflect(normal);
                   mesh.position.setLength(radius - 0.1);
                 } else if (physicsConfig.boundaryMode === 'wrap') {
                   // Wrap to opposite side
@@ -1433,25 +1499,124 @@ const RockScene: React.FC = () => {
                 } else if (physicsConfig.boundaryMode === 'contain') {
                   // Stop at boundary
                   mesh.position.setLength(radius);
-                  state.velocity.set(0, 0, 0);
+                  instanceState.velocity.set(0, 0, 0);
                 }
               }
             }
 
             // Update trails (if enabled)
             if (physicsConfig.trailsEnabled) {
-              state.trail.push({
+              instanceState.trail.push({
                 position: mesh.position.clone(),
                 time: elapsed,
-                velocity: state.velocity.length(),
+                velocity: instanceState.velocity.length(),
               });
 
               // Limit trail length
-              while (state.trail.length > physicsConfig.trailLength) {
-                state.trail.shift();
+              while (instanceState.trail.length > physicsConfig.trailLength) {
+                instanceState.trail.shift();
               }
             }
           });
+
+          // ============================================
+          // === SPRINT 2: TRAIL RENDERING ===
+          // ============================================
+          if (physicsConfig.trailsEnabled && refs.scene) {
+            coreMeshArray.forEach(([id, mesh]) => {
+              const instanceState = physicsState.instances.get(id);
+              if (instanceState) {
+                updateTrailGeometry(
+                  id,
+                  instanceState.trail,
+                  refs.trailSystem,
+                  refs.scene!,
+                  refs.trailConfig
+                );
+              }
+            });
+          }
+
+          // ============================================
+          // === SPRINT 2: COLLISION DETECTION ===
+          // ============================================
+          if (refs.collisionConfig.enabled && refs.scene) {
+            const collisionInstances: InstancePhysics[] = coreMeshArray.map(([id, mesh]) => {
+              const instanceState = physicsState.instances.get(id)!;
+              return {
+                id,
+                position: mesh.position.clone(),
+                velocity: instanceState.velocity.clone(),
+                radius: mesh.scale.x * 0.5,
+                mass: instanceState.mass,
+              };
+            });
+
+            const events = processCollisions(collisionInstances, refs.collisionConfig, (event) => {
+              const effect = createCollisionEffect(event, refs.collisionConfig);
+              if (effect) {
+                refs.collisionEffects.push(effect);
+              }
+            });
+
+            // Update positions and velocities back to meshes after collision resolution
+            collisionInstances.forEach(inst => {
+              const mesh = refs.coreMeshes.get(inst.id);
+              if (mesh) {
+                mesh.position.copy(inst.position);
+              }
+              const instanceState = physicsState.instances.get(inst.id);
+              if (instanceState) {
+                instanceState.velocity.copy(inst.velocity);
+              }
+            });
+
+            // Clean up expired collision effects
+            const now = performance.now();
+            refs.collisionEffects = refs.collisionEffects.filter(
+              effect => now - effect.startTime < effect.duration
+            );
+          }
+
+          // ============================================
+          // === SPRINT 2: VECTOR VISUALIZATION ===
+          // ============================================
+          if (refs.scene) {
+            coreMeshArray.forEach(([id, mesh]) => {
+              const instanceState = physicsState.instances.get(id);
+              if (instanceState) {
+                updateVelocityVector(
+                  id,
+                  mesh.position,
+                  instanceState.velocity,
+                  refs.vectorSystem,
+                  refs.scene!,
+                  refs.vectorConfig
+                );
+                updateForceVector(
+                  id,
+                  mesh.position,
+                  instanceState.acceleration,
+                  refs.vectorSystem,
+                  refs.scene!,
+                  refs.vectorConfig
+                );
+              }
+            });
+          }
+
+          // ============================================
+          // === SPRINT 2: ENERGY CALCULATION ===
+          // ============================================
+          const energyInstances = coreMeshArray.map(([id, mesh]) => {
+            const instanceState = physicsState.instances.get(id)!;
+            return {
+              mass: instanceState.mass,
+              velocity: instanceState.velocity,
+              position: mesh.position,
+            };
+          });
+          refs.energyStats = calculateTotalEnergy(energyInstances, G);
         }
         // === END PHYSICS UPDATE ===
 
@@ -1540,6 +1705,10 @@ const RockScene: React.FC = () => {
         sceneRefs.current.coreMaterials.clear();
         sceneRefs.current.gelMaterials.clear();
         sceneRefs.current.instanceUniforms.clear();
+
+        // Cleanup Sprint 2 systems (v5.0.0-alpha.2)
+        clearAllTrails(sceneRefs.current.trailSystem, scene);
+        clearAllVectors(sceneRefs.current.vectorSystem, scene);
 
         renderer?.dispose();
       };
