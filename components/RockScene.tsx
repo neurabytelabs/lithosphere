@@ -64,6 +64,17 @@ import {
   PhysicsPreset,
 } from '../services/physicsPresets';
 
+// ============================================
+// === SPRINT 3 SERVICES (v6.0.0-alpha.1) ===
+// ============================================
+import {
+  AudioAnalyzer,
+  FrequencyBands,
+  AudioMood,
+  BeatInfo,
+} from '../services/audioService';
+import AudioPanel from './AudioPanel';
+
 const {
   positionLocal,
   normalLocal,
@@ -251,6 +262,27 @@ interface SceneRefs {
     potential: number;
     total: number;
   };
+
+  // Sprint 3: Audio Reactivity (v6.0.0-alpha.1)
+  audioAnalyzer: AudioAnalyzer | null;
+  audioReactive: {
+    enabled: boolean;
+    bands: FrequencyBands | null;
+    mood: AudioMood | null;
+    beat: BeatInfo | null;
+    sensitivity: {
+      scale: number;
+      glow: number;
+      rotation: number;
+      trails: number;
+    };
+    // Smoothed values for organic motion
+    smoothedScale: number;
+    smoothedGlow: number;
+    smoothedRotation: number;
+    lastBeatTime: number;
+    beatPulse: number; // 0-1, decays after beat
+  };
 }
 
 const RockScene: React.FC = () => {
@@ -347,6 +379,26 @@ const RockScene: React.FC = () => {
     vectorConfig: { ...DEFAULT_VECTOR_CONFIG },
     collisionEffects: [],
     energyStats: { kinetic: 0, potential: 0, total: 0 },
+
+    // Sprint 3: Audio Reactivity (v6.0.0-alpha.1)
+    audioAnalyzer: null,
+    audioReactive: {
+      enabled: false,
+      bands: null,
+      mood: null,
+      beat: null,
+      sensitivity: {
+        scale: 1.5,
+        glow: 2.0,
+        rotation: 1.0,
+        trails: 1.8,
+      },
+      smoothedScale: 1.0,
+      smoothedGlow: 0.0,
+      smoothedRotation: 0.0,
+      lastBeatTime: 0,
+      beatPulse: 0,
+    },
   });
 
   // Update scene when config changes
@@ -700,6 +752,17 @@ const RockScene: React.FC = () => {
     // Panel is now on the right side, no camera adjustment needed
     console.log(`[Panel] ${isOpen ? 'opened' : 'closed'}`);
   }, []);
+
+  // Handle audio analyzer connection (v6.0.0)
+  const handleAudioAnalyzer = useCallback((analyzer: AudioAnalyzer | null) => {
+    const refs = sceneRefs.current;
+    refs.audioAnalyzer = analyzer;
+    refs.audioReactive.enabled = analyzer !== null;
+    console.log(`[Audio] Analyzer ${analyzer ? 'connected' : 'disconnected'}`);
+  }, []);
+
+  // State for audio panel visibility
+  const [isAudioPanelCollapsed, setIsAudioPanelCollapsed] = useState(false);
 
   // Handle GLTF mesh import
   const handleMeshImport = useCallback((file: File) => {
@@ -1620,6 +1683,94 @@ const RockScene: React.FC = () => {
         }
         // === END PHYSICS UPDATE ===
 
+        // ============================================
+        // === AUDIO REACTIVITY (v6.0.0-alpha.1) ===
+        // ============================================
+        const audioReactive = refs.audioReactive;
+        if (refs.audioAnalyzer && audioReactive.enabled) {
+          const analyzer = refs.audioAnalyzer;
+
+          // Get current audio data
+          audioReactive.bands = analyzer.getFrequencyBands();
+          audioReactive.beat = analyzer.detectBeat();
+          audioReactive.mood = analyzer.analyzeMood();
+
+          const bands = audioReactive.bands;
+          const beat = audioReactive.beat;
+          const sens = audioReactive.sensitivity;
+
+          // Normalize frequency values (0-255 -> 0-1)
+          const normalizedBass = (bands.subBass + bands.bass) / 510;
+          const normalizedMid = bands.mid / 255;
+          const normalizedHigh = (bands.highMid + bands.brilliance) / 510;
+
+          // Target values based on audio
+          const targetScale = 1.0 + normalizedBass * 0.3 * sens.scale;
+          const targetGlow = normalizedBass * sens.glow;
+          const targetRotation = normalizedMid * sens.rotation * 2.0;
+
+          // Smooth interpolation for organic motion (lerp factor ~0.1)
+          const lerpFactor = 0.1;
+          audioReactive.smoothedScale = lerp(audioReactive.smoothedScale, targetScale, lerpFactor);
+          audioReactive.smoothedGlow = lerp(audioReactive.smoothedGlow, targetGlow, lerpFactor);
+          audioReactive.smoothedRotation = lerp(audioReactive.smoothedRotation, targetRotation, lerpFactor);
+
+          // Beat pulse effect (decays over time)
+          if (beat.isBeat) {
+            audioReactive.beatPulse = 1.0;
+            audioReactive.lastBeatTime = performance.now();
+          } else {
+            // Decay pulse over 200ms
+            const timeSinceBeat = performance.now() - audioReactive.lastBeatTime;
+            audioReactive.beatPulse = Math.max(0, 1.0 - timeSinceBeat / 200);
+          }
+
+          // Apply audio reactivity to all core meshes
+          refs.coreMeshes.forEach((mesh, id) => {
+            const baseScale = (mesh.userData as any).baseScale || 1;
+
+            // Scale: base + breathing + audio pulse + beat punch
+            const audioScale = audioReactive.smoothedScale;
+            const beatPunch = audioReactive.beatPulse * 0.15;
+            mesh.scale.setScalar(baseScale * audioScale * (1 + beatPunch));
+
+            // Rotation: add audio-driven rotation on Y axis
+            mesh.rotation.y += audioReactive.smoothedRotation * delta;
+          });
+
+          // Apply glow to materials (emissive intensity)
+          refs.coreMaterials.forEach((material, id) => {
+            if (material.emissiveIntensity !== undefined) {
+              const baseEmissive = 0.5; // Default emissive
+              material.emissiveIntensity = baseEmissive + audioReactive.smoothedGlow;
+            }
+          });
+
+          // Apply to gel meshes with reduced intensity
+          refs.gelMeshes.forEach((mesh, id) => {
+            const baseScale = (mesh.userData as any).baseScale || 1;
+            const audioScale = audioReactive.smoothedScale * 0.7 + 0.3; // Less reactive
+            const beatPunch = audioReactive.beatPulse * 0.08;
+            mesh.scale.setScalar(baseScale * audioScale * (1 + beatPunch));
+          });
+
+          // Modulate trail config based on high frequencies
+          if (physicsConfig.trailsEnabled) {
+            refs.trailConfig.maxLength = Math.floor(50 + normalizedHigh * 100 * sens.trails);
+            refs.trailConfig.opacity = 0.3 + normalizedHigh * 0.5;
+          }
+
+          // Beat-triggered color flash on HAL lights
+          if (beat.isBeat && audioReactive.beatPulse > 0.8) {
+            const lc = refs.lightingConfig;
+            if (lc.halCoreLightEnabled && refs.halCoreLight) {
+              // Flash brighter on beat
+              refs.halCoreLight.intensity = lc.halCoreLightIntensity * 2.5;
+            }
+          }
+        }
+        // === END AUDIO REACTIVITY ===
+
         // Dynamic lighting (can be toggled)
         if (animConfig.dynamicLighting) {
           const lightAngle = elapsed * animConfig.orbitSpeed;
@@ -1757,6 +1908,13 @@ const RockScene: React.FC = () => {
         onEnvMapImport={handleEnvMapImport}
         onPanelToggle={handlePanelToggle}
         rendererRef={rendererRef}
+      />
+
+      {/* Audio Panel (v6.0.0) */}
+      <AudioPanel
+        onAudioAnalyzer={handleAudioAnalyzer}
+        isCollapsed={isAudioPanelCollapsed}
+        onToggle={() => setIsAudioPanelCollapsed(!isAudioPanelCollapsed)}
       />
     </div>
   );
