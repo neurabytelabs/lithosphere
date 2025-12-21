@@ -11,10 +11,10 @@
  * - PATCH: Bug fixes, small improvements
  */
 
-export const VERSION = '5.0.0-alpha.2';
-export const VERSION_SHORT = 'v5.0.0-α2';
-export const VERSION_NAME = 'Three-Body';
-export const BUILD_DATE = '2025-12-21';
+export const VERSION = '6.0.0-alpha.1';
+export const VERSION_SHORT = 'v6.0.0-α1';
+export const VERSION_NAME = 'Cosmic Symphony';
+export const BUILD_DATE = '2025-12-22';
 
 // Version history for changelog display
 export interface VersionEntry {
@@ -25,6 +25,21 @@ export interface VersionEntry {
 }
 
 export const VERSION_HISTORY: VersionEntry[] = [
+  {
+    version: '6.0.0-alpha.1',
+    date: '2025-12-22',
+    name: 'Cosmic Symphony',
+    features: [
+      { emoji: '🎵', title: 'Audio Reactivity', description: 'Web Audio API integration for real-time frequency analysis' },
+      { emoji: '👋', title: 'Gesture Control', description: 'MediaPipe hand tracking for haptic-style interaction' },
+      { emoji: '🎧', title: 'Multi-Source Audio', description: 'Support for file upload, microphone, and tab audio capture' },
+      { emoji: '💓', title: 'Beat Detection', description: 'Real-time BPM detection and beat-triggered effects' },
+      { emoji: '🌈', title: 'Mood Analysis', description: 'Spectral analysis for energy, valence, and intensity' },
+      { emoji: '🎛️', title: 'Audio Panel UI', description: 'Drag & drop audio files, visualizer, and playback controls' },
+      { emoji: '✊', title: '8 Gesture Actions', description: 'Fist=pause, Palm=resume, Victory=next preset, and more' },
+      { emoji: '🎯', title: 'Pinch-to-Grab', description: 'Grab and move bodies with pinch gesture' },
+    ],
+  },
   {
     version: '5.0.0-alpha.2',
     date: '2025-12-21',
