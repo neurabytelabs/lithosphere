@@ -11,8 +11,8 @@
  * - PATCH: Bug fixes, small improvements
  */
 
-export const VERSION = '6.0.0-alpha.1';
-export const VERSION_SHORT = 'v6.0.0-α1';
+export const VERSION = '6.0.0-alpha.2';
+export const VERSION_SHORT = 'v6.0.0-α2';
 export const VERSION_NAME = 'Cosmic Symphony';
 export const BUILD_DATE = '2025-12-22';
 
@@ -25,6 +25,19 @@ export interface VersionEntry {
 }
 
 export const VERSION_HISTORY: VersionEntry[] = [
+  {
+    version: '6.0.0-alpha.2',
+    date: '2025-12-22',
+    name: 'Cosmic Symphony',
+    features: [
+      { emoji: '📷', title: 'Gesture Camera Control', description: 'Move hand to orbit camera, pinch to zoom' },
+      { emoji: '🎮', title: 'Gesture Panel UI', description: 'Webcam preview with hand landmark visualization' },
+      { emoji: '🖐️', title: 'Hand Tracking', description: '21 landmarks per hand with smooth interpolation' },
+      { emoji: '⚡', title: 'Gesture Actions', description: 'Fist=pause, Palm=resume, Victory=next preset' },
+      { emoji: '✌️', title: 'Two-Hand Scale', description: 'Move hands apart/together to scale simulation' },
+      { emoji: '🎯', title: 'Camera Smoothing', description: 'Lerp-based camera movement for organic feel' },
+    ],
+  },
   {
     version: '6.0.0-alpha.1',
     date: '2025-12-22',

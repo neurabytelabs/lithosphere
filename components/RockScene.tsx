@@ -73,7 +73,13 @@ import {
   AudioMood,
   BeatInfo,
 } from '../services/audioService';
+import {
+  GestureController,
+  GestureAction,
+  CameraControl,
+} from '../services/gestureService';
 import AudioPanel from './AudioPanel';
+import GesturePanel from './GesturePanel';
 
 const {
   positionLocal,
@@ -283,6 +289,22 @@ interface SceneRefs {
     lastBeatTime: number;
     beatPulse: number; // 0-1, decays after beat
   };
+
+  // Sprint 3: Gesture Control (v6.0.0-alpha.1)
+  gestureController: GestureController | null;
+  gestureControl: {
+    enabled: boolean;
+    cameraControl: CameraControl;
+    lastAction: GestureAction;
+    // Smoothed camera values
+    smoothedPanX: number;
+    smoothedPanY: number;
+    smoothedZoom: number;
+    smoothedRotation: number;
+    // Grab state
+    isGrabbing: boolean;
+    grabbedBodyId: string | null;
+  };
 }
 
 const RockScene: React.FC = () => {
@@ -398,6 +420,20 @@ const RockScene: React.FC = () => {
       smoothedRotation: 0.0,
       lastBeatTime: 0,
       beatPulse: 0,
+    },
+
+    // Sprint 3: Gesture Control (v6.0.0-alpha.1)
+    gestureController: null,
+    gestureControl: {
+      enabled: false,
+      cameraControl: { panX: 0, panY: 0, zoom: 1, rotationY: 0, scale: 1 },
+      lastAction: 'none',
+      smoothedPanX: 0,
+      smoothedPanY: 0,
+      smoothedZoom: 1,
+      smoothedRotation: 0,
+      isGrabbing: false,
+      grabbedBodyId: null,
     },
   });
 
@@ -761,8 +797,88 @@ const RockScene: React.FC = () => {
     console.log(`[Audio] Analyzer ${analyzer ? 'connected' : 'disconnected'}`);
   }, []);
 
-  // State for audio panel visibility
+  // Handle gesture controller connection (v6.0.0)
+  const handleGestureController = useCallback((controller: GestureController | null) => {
+    const refs = sceneRefs.current;
+    refs.gestureController = controller;
+    refs.gestureControl.enabled = controller !== null;
+    console.log(`[Gesture] Controller ${controller ? 'connected' : 'disconnected'}`);
+  }, []);
+
+  // Handle camera control from gestures (v6.0.0)
+  const handleCameraControl = useCallback((control: CameraControl) => {
+    const refs = sceneRefs.current;
+    refs.gestureControl.cameraControl = control;
+  }, []);
+
+  // Handle gesture actions (v6.0.0)
+  const handleGestureAction = useCallback((action: GestureAction) => {
+    const refs = sceneRefs.current;
+    refs.gestureControl.lastAction = action;
+
+    // Execute actions
+    switch (action) {
+      case 'pause':
+        // Pause physics
+        if (configRef.current.physics.enabled) {
+          setConfig(prev => ({
+            ...prev,
+            physics: { ...prev.physics, enabled: false }
+          }));
+        }
+        break;
+      case 'resume':
+        // Resume physics
+        if (!configRef.current.physics.enabled) {
+          setConfig(prev => ({
+            ...prev,
+            physics: { ...prev.physics, enabled: true }
+          }));
+        }
+        break;
+      case 'increaseGravity':
+        setConfig(prev => ({
+          ...prev,
+          physics: {
+            ...prev.physics,
+            gravityStrength: Math.min(prev.physics.gravityStrength + 0.1, 2.0)
+          }
+        }));
+        break;
+      case 'decreaseGravity':
+        setConfig(prev => ({
+          ...prev,
+          physics: {
+            ...prev.physics,
+            gravityStrength: Math.max(prev.physics.gravityStrength - 0.1, 0.1)
+          }
+        }));
+        break;
+      case 'toggleTrails':
+        setConfig(prev => ({
+          ...prev,
+          physics: { ...prev.physics, trailsEnabled: !prev.physics.trailsEnabled }
+        }));
+        break;
+      case 'nextPreset':
+        // Cycle through physics presets
+        const presets = PHYSICS_PRESETS;
+        const currentIndex = presets.findIndex(p => p.id === configRef.current.physics.preset);
+        const nextIndex = (currentIndex + 1) % presets.length;
+        const nextPreset = presets[nextIndex];
+        console.log(`[Gesture] Switching to preset: ${nextPreset.name}`);
+        // Apply preset would go here
+        break;
+      default:
+        break;
+    }
+
+    console.log(`[Gesture] Action: ${action}`);
+  }, []);
+
+  // State for panel visibility
   const [isAudioPanelCollapsed, setIsAudioPanelCollapsed] = useState(false);
+  const [isGesturePanelCollapsed, setIsGesturePanelCollapsed] = useState(false);
 
   // Handle GLTF mesh import
   const handleMeshImport = useCallback((file: File) => {
@@ -1771,6 +1887,72 @@ const RockScene: React.FC = () => {
         }
         // === END AUDIO REACTIVITY ===
 
+        // ============================================
+        // === GESTURE CAMERA CONTROL (v6.0.0) ===
+        // ============================================
+        const gestureControl = refs.gestureControl;
+        if (gestureControl.enabled && refs.controls) {
+          const control = gestureControl.cameraControl;
+          const lerpFactor = 0.08; // Smooth camera movement
+
+          // Smooth interpolation for camera values
+          gestureControl.smoothedPanX = lerp(gestureControl.smoothedPanX, control.panX, lerpFactor);
+          gestureControl.smoothedPanY = lerp(gestureControl.smoothedPanY, control.panY, lerpFactor);
+          gestureControl.smoothedZoom = lerp(gestureControl.smoothedZoom, control.zoom, lerpFactor);
+          gestureControl.smoothedRotation = lerp(gestureControl.smoothedRotation, control.rotationY, lerpFactor);
+
+          // Apply camera orbit based on hand position
+          // Pan X/Y maps to orbit angles
+          const orbitSpeed = 0.02;
+          const targetAzimuth = gestureControl.smoothedPanX * Math.PI * 0.5; // -90 to +90 degrees
+          const targetPolar = (gestureControl.smoothedPanY * 0.5 + 0.5) * Math.PI * 0.4 + Math.PI * 0.3; // 54-126 degrees
+
+          // Get current camera spherical coordinates
+          const cameraDistance = refs.camera!.position.length();
+
+          // Apply smooth rotation (orbit around target)
+          if (Math.abs(gestureControl.smoothedPanX) > 0.05 || Math.abs(gestureControl.smoothedPanY) > 0.05) {
+            const currentAngle = Math.atan2(refs.camera!.position.x, refs.camera!.position.z);
+            const newAngle = currentAngle + gestureControl.smoothedPanX * orbitSpeed;
+
+            // Calculate new camera position
+            const newX = Math.sin(newAngle) * cameraDistance * Math.cos(targetPolar - Math.PI / 2);
+            const newY = refs.camera!.position.y + gestureControl.smoothedPanY * orbitSpeed * cameraDistance * 0.5;
+            const newZ = Math.cos(newAngle) * cameraDistance * Math.cos(targetPolar - Math.PI / 2);
+
+            refs.camera!.position.x = lerp(refs.camera!.position.x, newX, lerpFactor);
+            refs.camera!.position.y = lerp(refs.camera!.position.y, Math.max(0.5, Math.min(newY, cameraDistance * 0.8)), lerpFactor);
+            refs.camera!.position.z = lerp(refs.camera!.position.z, newZ, lerpFactor);
+
+            refs.camera!.lookAt(refs.controls.target);
+          }
+
+          // Apply zoom based on hand distance from camera (Z depth)
+          const zoomFactor = gestureControl.smoothedZoom;
+          if (Math.abs(zoomFactor - 1) > 0.05) {
+            const targetDistance = cameraDistance / zoomFactor;
+            const clampedDistance = Math.max(refs.controls.minDistance, Math.min(targetDistance, refs.controls.maxDistance));
+
+            if (Math.abs(clampedDistance - cameraDistance) > 0.1) {
+              const direction = refs.camera!.position.clone().normalize();
+              refs.camera!.position.copy(direction.multiplyScalar(lerp(cameraDistance, clampedDistance, lerpFactor * 0.5)));
+            }
+          }
+
+          // Two-hand scale: adjust simulation scale (all bodies)
+          if (control.scale !== 1 && Math.abs(control.scale - 1) > 0.05) {
+            const scaleFactor = control.scale;
+            refs.coreMeshes.forEach((mesh) => {
+              const baseScale = (mesh.userData as any).baseScale || 1;
+              mesh.scale.setScalar(baseScale * scaleFactor);
+            });
+          }
+
+          // Update controls target to keep camera focused
+          refs.controls.update();
+        }
+        // === END GESTURE CAMERA CONTROL ===
+
         // Dynamic lighting (can be toggled)
         if (animConfig.dynamicLighting) {
           const lightAngle = elapsed * animConfig.orbitSpeed;
@@ -1915,6 +2097,15 @@ const RockScene: React.FC = () => {
         onAudioAnalyzer={handleAudioAnalyzer}
         isCollapsed={isAudioPanelCollapsed}
         onToggle={() => setIsAudioPanelCollapsed(!isAudioPanelCollapsed)}
+      />
+
+      {/* Gesture Panel (v6.0.0) */}
+      <GesturePanel
+        onGestureController={handleGestureController}
+        onCameraControl={handleCameraControl}
+        onGestureAction={handleGestureAction}
+        isCollapsed={isGesturePanelCollapsed}
+        onToggle={() => setIsGesturePanelCollapsed(!isGesturePanelCollapsed)}
       />
     </div>
   );
