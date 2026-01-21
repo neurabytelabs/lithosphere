@@ -1,15 +1,17 @@
 /**
- * LITHOSPHERE v7.0 - Material Selector Component
+ * LITHOSPHERE v7.1 - Material Selector Component
  *
- * Top-level wrapper that integrates MaterialPicker and GeologicalStoryPanel.
+ * Top-level wrapper that integrates MaterialPicker, GeologicalStoryPanel, and AIPanel.
  * Designed to be dropped into App.tsx as a simple overlay.
  */
 
 import React, { useState, useCallback } from 'react';
 import { MaterialPicker } from '../MaterialPicker/MaterialPicker';
 import { GeologicalStoryPanel } from '../../features/GeologicalStory/GeologicalStoryPanel';
+import { AIPanel } from '../AIPanel/AIPanel';
 import type { UseMaterialReturn } from '../../hooks/useMaterial';
 import type { MaterialDefinition } from '../../../materials/types';
+import type { MaterialSuggestion } from '../../../services/geminiService';
 import './MaterialSelector.css';
 
 // ============================================================================
@@ -31,6 +33,7 @@ export const MaterialSelector: React.FC<MaterialSelectorProps> = ({
 }) => {
   const [isPickerOpen, setPickerOpen] = useState(false);
   const [isStoryPanelOpen, setStoryPanelOpen] = useState(false);
+  const [isAIPanelOpen, setAIPanelOpen] = useState(false);
 
   const {
     currentDefinition,
@@ -63,6 +66,13 @@ export const MaterialSelector: React.FC<MaterialSelectorProps> = ({
     playStory();
   }, [playStory]);
 
+  // Handle AI suggestion apply (future: could modify material parameters)
+  const handleApplySuggestion = useCallback((suggestion: MaterialSuggestion) => {
+    console.log('[MaterialSelector] AI suggestion received:', suggestion);
+    // Future: Apply suggestion.parameters to current material
+    // For now, just log it
+  }, []);
+
   if (!isInitialized || !currentDefinition) {
     return null;
   }
@@ -88,6 +98,17 @@ export const MaterialSelector: React.FC<MaterialSelectorProps> = ({
       >
         <span className="story-icon">📜</span>
         <span className="story-text">Story</span>
+      </button>
+
+      {/* AI Button */}
+      <button
+        className="ai-button"
+        onClick={() => setAIPanelOpen(true)}
+        title="AI Studio - Free AI Features"
+      >
+        <span className="ai-button-icon">🤖</span>
+        <span className="ai-button-text">AI</span>
+        <span className="ai-button-badge">FREE</span>
       </button>
 
       {/* Material Picker Dropdown */}
@@ -118,6 +139,14 @@ export const MaterialSelector: React.FC<MaterialSelectorProps> = ({
           onSpeedChange={setStorySpeed}
         />
       )}
+
+      {/* AI Panel */}
+      <AIPanel
+        isOpen={isAIPanelOpen}
+        onClose={() => setAIPanelOpen(false)}
+        currentMaterial={currentDefinition.name}
+        onApplySuggestion={handleApplySuggestion}
+      />
     </div>
   );
 };
