@@ -1,11 +1,17 @@
 /**
- * Audio Panel Component - Lithosphere v6.0.0 "Cosmic Symphony"
+ * Audio Panel Component - Lithosphere v7.2.0 "Studio Design"
  *
  * UI for audio source selection and real-time visualization.
  * Supports file upload, microphone, and tab audio capture.
  *
+ * Studio Design System:
+ * - Collapsible sections
+ * - 12px border radius
+ * - 12px backdrop blur
+ * - Blue accent (#6688ff)
+ *
  * @author Claude Code for NeuraByte Labs
- * @version 6.0.0
+ * @version 7.2.0
  */
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
@@ -28,9 +34,27 @@ interface AudioPanelProps {
   onToggle?: () => void;
 }
 
+interface SectionState {
+  sources: boolean;
+  visualizer: boolean;
+  stats: boolean;
+}
+
 // ============================================================================
-// STYLES
+// STYLES - Studio Design System
 // ============================================================================
+
+const ACCENT = {
+  primary: '#6688ff',
+  primaryDim: 'rgba(100, 136, 255, 0.3)',
+  primaryGlow: 'rgba(100, 136, 255, 0.2)',
+  bg: 'rgba(10, 15, 20, 0.92)',
+  bgSection: 'rgba(20, 25, 35, 0.6)',
+  border: 'rgba(100, 136, 255, 0.25)',
+  text: '#fff',
+  textDim: '#888',
+  textMuted: '#666',
+};
 
 const styles = {
   panel: {
@@ -38,85 +62,133 @@ const styles = {
     bottom: '20px',
     left: '20px',
     width: '320px',
-    backgroundColor: 'rgba(10, 10, 15, 0.95)',
+    backgroundColor: ACCENT.bg,
     borderRadius: '12px',
-    border: '1px solid rgba(100, 100, 255, 0.3)',
-    padding: '16px',
+    border: `1px solid ${ACCENT.border}`,
     fontFamily: "'JetBrains Mono', monospace",
-    color: '#fff',
+    color: ACCENT.text,
     zIndex: 1000,
-    backdropFilter: 'blur(10px)',
-    boxShadow: '0 8px 32px rgba(0, 0, 0, 0.5)',
+    backdropFilter: 'blur(12px)',
+    boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)',
+    overflow: 'hidden',
   },
   header: {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: '16px',
-    borderBottom: '1px solid rgba(100, 100, 255, 0.2)',
-    paddingBottom: '12px',
+    padding: '12px 16px',
+    borderBottom: `1px solid ${ACCENT.border}`,
+    background: 'rgba(100, 136, 255, 0.05)',
+  },
+  headerLeft: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
   },
   title: {
-    fontSize: '14px',
+    fontSize: '13px',
     fontWeight: 600,
-    color: '#8888ff',
+    color: ACCENT.primary,
     margin: 0,
+    letterSpacing: '0.5px',
+  },
+  statusDot: {
+    width: '6px',
+    height: '6px',
+    borderRadius: '50%',
+    backgroundColor: '#333',
+  },
+  statusDotActive: {
+    backgroundColor: ACCENT.primary,
+    boxShadow: `0 0 8px ${ACCENT.primary}`,
   },
   toggleButton: {
     background: 'none',
     border: 'none',
-    color: '#888',
+    color: ACCENT.textDim,
     cursor: 'pointer',
-    fontSize: '20px',
+    fontSize: '18px',
     padding: '4px 8px',
+    transition: 'color 0.2s ease',
+  },
+  section: {
+    borderBottom: `1px solid ${ACCENT.border}`,
+  },
+  sectionHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: '10px 16px',
+    cursor: 'pointer',
+    transition: 'background 0.2s ease',
+    userSelect: 'none' as const,
+  },
+  sectionTitle: {
+    fontSize: '11px',
+    fontWeight: 500,
+    color: ACCENT.textDim,
+    textTransform: 'uppercase' as const,
+    letterSpacing: '1px',
+  },
+  chevron: {
+    fontSize: '10px',
+    color: ACCENT.textMuted,
+    transition: 'transform 0.2s ease',
+  },
+  chevronOpen: {
+    transform: 'rotate(180deg)',
+  },
+  sectionContent: {
+    padding: '12px 16px',
+    backgroundColor: ACCENT.bgSection,
   },
   sourceButtons: {
     display: 'flex',
     gap: '8px',
-    marginBottom: '16px',
   },
   sourceButton: {
     flex: 1,
     padding: '10px 8px',
-    fontSize: '11px',
-    backgroundColor: 'rgba(50, 50, 80, 0.5)',
-    border: '1px solid rgba(100, 100, 255, 0.3)',
+    fontSize: '10px',
+    backgroundColor: 'rgba(40, 45, 60, 0.5)',
+    border: `1px solid ${ACCENT.border}`,
     borderRadius: '8px',
-    color: '#aaa',
+    color: ACCENT.textDim,
     cursor: 'pointer',
     transition: 'all 0.2s ease',
     display: 'flex',
     flexDirection: 'column' as const,
     alignItems: 'center',
     gap: '4px',
+    fontFamily: "'JetBrains Mono', monospace",
   },
   sourceButtonActive: {
-    backgroundColor: 'rgba(80, 80, 255, 0.4)',
-    borderColor: '#6666ff',
-    color: '#fff',
+    backgroundColor: 'rgba(100, 136, 255, 0.2)',
+    borderColor: ACCENT.primary,
+    color: ACCENT.text,
+    boxShadow: `0 0 12px ${ACCENT.primaryGlow}`,
   },
   sourceIcon: {
-    fontSize: '18px',
+    fontSize: '16px',
   },
   dropZone: {
-    border: '2px dashed rgba(100, 100, 255, 0.4)',
+    border: `2px dashed ${ACCENT.border}`,
     borderRadius: '8px',
-    padding: '24px',
+    padding: '20px',
     textAlign: 'center' as const,
-    marginBottom: '16px',
     cursor: 'pointer',
     transition: 'all 0.2s ease',
+    marginTop: '12px',
   },
   dropZoneActive: {
-    borderColor: '#6666ff',
-    backgroundColor: 'rgba(80, 80, 255, 0.1)',
+    borderColor: ACCENT.primary,
+    backgroundColor: ACCENT.primaryGlow,
   },
   visualizer: {
-    height: '80px',
-    backgroundColor: 'rgba(0, 0, 10, 0.5)',
+    height: '70px',
+    backgroundColor: 'rgba(0, 5, 15, 0.6)',
     borderRadius: '8px',
     overflow: 'hidden',
-    marginBottom: '12px',
     position: 'relative' as const,
   },
   canvas: {
@@ -126,78 +198,100 @@ const styles = {
   controls: {
     display: 'flex',
     alignItems: 'center',
-    gap: '12px',
-    marginBottom: '12px',
+    gap: '10px',
+    marginTop: '12px',
   },
   playButton: {
-    width: '40px',
-    height: '40px',
+    width: '36px',
+    height: '36px',
     borderRadius: '50%',
-    backgroundColor: 'rgba(80, 80, 255, 0.5)',
-    border: '2px solid #6666ff',
-    color: '#fff',
+    backgroundColor: 'rgba(100, 136, 255, 0.2)',
+    border: `2px solid ${ACCENT.primary}`,
+    color: ACCENT.text,
     cursor: 'pointer',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    fontSize: '18px',
+    fontSize: '14px',
     transition: 'all 0.2s ease',
+    fontFamily: "'JetBrains Mono', monospace",
   },
   progressBar: {
     flex: 1,
-    height: '6px',
-    backgroundColor: 'rgba(50, 50, 80, 0.5)',
-    borderRadius: '3px',
+    height: '4px',
+    backgroundColor: 'rgba(40, 45, 60, 0.5)',
+    borderRadius: '2px',
     cursor: 'pointer',
     overflow: 'hidden',
   },
   progressFill: {
     height: '100%',
-    backgroundColor: '#6666ff',
-    borderRadius: '3px',
+    backgroundColor: ACCENT.primary,
+    borderRadius: '2px',
     transition: 'width 0.1s linear',
   },
   time: {
-    fontSize: '11px',
-    color: '#888',
+    fontSize: '10px',
+    color: ACCENT.textDim,
     fontVariantNumeric: 'tabular-nums',
+    minWidth: '70px',
+    textAlign: 'right' as const,
   },
   stats: {
     display: 'grid',
     gridTemplateColumns: 'repeat(4, 1fr)',
     gap: '8px',
-    marginTop: '12px',
   },
   stat: {
     textAlign: 'center' as const,
-    padding: '8px',
-    backgroundColor: 'rgba(30, 30, 50, 0.5)',
+    padding: '8px 4px',
+    backgroundColor: 'rgba(30, 35, 50, 0.5)',
     borderRadius: '6px',
+    border: `1px solid rgba(100, 136, 255, 0.1)`,
   },
   statValue: {
-    fontSize: '16px',
+    fontSize: '14px',
     fontWeight: 600,
-    color: '#fff',
+    color: ACCENT.text,
   },
   statLabel: {
-    fontSize: '9px',
-    color: '#888',
+    fontSize: '8px',
+    color: ACCENT.textMuted,
     textTransform: 'uppercase' as const,
     marginTop: '2px',
+    letterSpacing: '0.5px',
   },
   beatIndicator: {
     position: 'absolute' as const,
-    top: '8px',
-    right: '8px',
-    width: '12px',
-    height: '12px',
+    top: '6px',
+    right: '6px',
+    width: '10px',
+    height: '10px',
     borderRadius: '50%',
     backgroundColor: '#333',
-    transition: 'background-color 0.05s ease',
+    transition: 'all 0.05s ease',
   },
   beatIndicatorActive: {
-    backgroundColor: '#ff4444',
-    boxShadow: '0 0 10px #ff4444',
+    backgroundColor: '#ff4466',
+    boxShadow: '0 0 10px #ff4466',
+  },
+  collapsedPanel: {
+    position: 'fixed' as const,
+    bottom: '20px',
+    left: '20px',
+    backgroundColor: ACCENT.bg,
+    borderRadius: '12px',
+    border: `1px solid ${ACCENT.border}`,
+    padding: '10px 16px',
+    fontFamily: "'JetBrains Mono', monospace",
+    color: ACCENT.text,
+    zIndex: 1000,
+    backdropFilter: 'blur(12px)',
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    transition: 'all 0.2s ease',
   },
 };
 
@@ -220,9 +314,20 @@ export const AudioPanel: React.FC<AudioPanelProps> = ({
   const [mood, setMood] = useState<AudioMood | null>(null);
   const [beat, setBeat] = useState<BeatInfo | null>(null);
 
+  // Collapsible sections
+  const [sections, setSections] = useState<SectionState>({
+    sources: true,
+    visualizer: true,
+    stats: true,
+  });
+
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const animationRef = useRef<number | null>(null);
+
+  const toggleSection = (section: keyof SectionState) => {
+    setSections(prev => ({ ...prev, [section]: !prev[section] }));
+  };
 
   // ============================================================================
   // AUDIO VISUALIZATION
@@ -235,13 +340,11 @@ export const AudioPanel: React.FC<AudioPanelProps> = ({
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // Set canvas size
     const rect = canvas.getBoundingClientRect();
     canvas.width = rect.width * window.devicePixelRatio;
     canvas.height = rect.height * window.devicePixelRatio;
     ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
 
-    // Get data
     const frequencyData = analyzer.getRawFrequencyData();
     const currentBands = analyzer.getFrequencyBands();
     const currentMood = analyzer.analyzeMood();
@@ -251,17 +354,14 @@ export const AudioPanel: React.FC<AudioPanelProps> = ({
     setMood(currentMood);
     setBeat(currentBeat);
 
-    // Update time
     const state = analyzer.state;
     setCurrentTime(state.currentTime);
     setDuration(state.duration);
     setIsPlaying(state.isPlaying);
 
-    // Clear
-    ctx.fillStyle = 'rgba(0, 0, 10, 0.3)';
+    ctx.fillStyle = 'rgba(0, 5, 15, 0.3)';
     ctx.fillRect(0, 0, rect.width, rect.height);
 
-    // Draw frequency bars
     const barWidth = rect.width / frequencyData.length;
     const heightScale = rect.height / 255;
 
@@ -271,16 +371,14 @@ export const AudioPanel: React.FC<AudioPanelProps> = ({
       const x = i * barWidth;
       const y = rect.height - height;
 
-      // Color gradient based on frequency
-      const hue = 240 - (i / frequencyData.length) * 60; // Blue to purple
-      const saturation = 80;
-      const lightness = 30 + (value / 255) * 40;
+      const hue = 220 + (i / frequencyData.length) * 40;
+      const saturation = 70;
+      const lightness = 35 + (value / 255) * 35;
 
       ctx.fillStyle = `hsl(${hue}, ${saturation}%, ${lightness}%)`;
       ctx.fillRect(x, y, barWidth - 1, height);
     }
 
-    // Schedule next frame
     animationRef.current = requestAnimationFrame(drawVisualization);
   }, [analyzer]);
 
@@ -349,7 +447,6 @@ export const AudioPanel: React.FC<AudioPanelProps> = ({
 
   const handlePlayPause = () => {
     if (!analyzer) return;
-
     if (isPlaying) {
       analyzer.pause();
     } else {
@@ -359,7 +456,6 @@ export const AudioPanel: React.FC<AudioPanelProps> = ({
 
   const handleSeek = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!analyzer || !duration) return;
-
     const rect = e.currentTarget.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const percentage = x / rect.width;
@@ -370,7 +466,6 @@ export const AudioPanel: React.FC<AudioPanelProps> = ({
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
-
     const file = e.dataTransfer.files[0];
     if (file && file.type.startsWith('audio/')) {
       handleFileSelect(file);
@@ -399,156 +494,206 @@ export const AudioPanel: React.FC<AudioPanelProps> = ({
 
   if (isCollapsed) {
     return (
-      <div
-        style={{
-          ...styles.panel,
-          width: 'auto',
-          padding: '12px 16px',
-          cursor: 'pointer',
-        }}
-        onClick={onToggle}
-      >
-        <span style={{ fontSize: '16px' }}>AUDIO</span>
-        {beat?.isBeat && <span style={{ marginLeft: '8px', color: '#ff4444' }}>*</span>}
+      <div style={styles.collapsedPanel} onClick={onToggle}>
+        <span style={{ color: ACCENT.primary, fontSize: '14px' }}>AUDIO</span>
+        <div style={{
+          ...styles.statusDot,
+          ...(sourceType !== 'none' ? styles.statusDotActive : {}),
+        }} />
+        {beat?.isBeat && <span style={{ color: '#ff4466', fontSize: '12px' }}>*</span>}
       </div>
     );
   }
 
   return (
     <div style={styles.panel}>
+      {/* Header */}
       <div style={styles.header}>
-        <h3 style={styles.title}>AUDIO REACTIVE</h3>
+        <div style={styles.headerLeft}>
+          <h3 style={styles.title}>AUDIO REACTIVE</h3>
+          <div style={{
+            ...styles.statusDot,
+            ...(sourceType !== 'none' ? styles.statusDotActive : {}),
+          }} />
+        </div>
         {onToggle && (
           <button style={styles.toggleButton} onClick={onToggle}>
-            -
+            −
           </button>
         )}
       </div>
 
-      {/* Source Selection */}
-      <div style={styles.sourceButtons}>
-        <button
-          style={{
-            ...styles.sourceButton,
-            ...(sourceType === 'file' ? styles.sourceButtonActive : {}),
-          }}
-          onClick={() => fileInputRef.current?.click()}
-        >
-          <span style={styles.sourceIcon}>FILE</span>
-        </button>
-        <button
-          style={{
-            ...styles.sourceButton,
-            ...(sourceType === 'microphone' ? styles.sourceButtonActive : {}),
-          }}
-          onClick={handleMicrophoneClick}
-        >
-          <span style={styles.sourceIcon}>MIC</span>
-        </button>
-        <button
-          style={{
-            ...styles.sourceButton,
-            ...(sourceType === 'tab' ? styles.sourceButtonActive : {}),
-          }}
-          onClick={handleTabCaptureClick}
-        >
-          <span style={styles.sourceIcon}>TAB</span>
-        </button>
-      </div>
-
-      {/* Hidden file input */}
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept="audio/*"
-        style={{ display: 'none' }}
-        onChange={(e) => {
-          const file = e.target.files?.[0];
-          if (file) handleFileSelect(file);
-        }}
-      />
-
-      {/* Drop Zone (when no source) */}
-      {sourceType === 'none' && (
+      {/* Sources Section */}
+      <div style={styles.section}>
         <div
-          style={{
-            ...styles.dropZone,
-            ...(isDragging ? styles.dropZoneActive : {}),
-          }}
-          onDragOver={(e) => {
-            e.preventDefault();
-            setIsDragging(true);
-          }}
-          onDragLeave={() => setIsDragging(false)}
-          onDrop={handleDrop}
-          onClick={() => fileInputRef.current?.click()}
+          style={styles.sectionHeader}
+          onClick={() => toggleSection('sources')}
         >
-          <span style={{ fontSize: '32px', display: 'block', marginBottom: '8px' }}>AUDIO</span>
-          <span style={{ color: '#888', fontSize: '12px' }}>
-            Drop audio file or click to browse
-          </span>
+          <span style={styles.sectionTitle}>Sources</span>
+          <span style={{
+            ...styles.chevron,
+            ...(sections.sources ? styles.chevronOpen : {}),
+          }}>▼</span>
         </div>
-      )}
+        {sections.sources && (
+          <div style={styles.sectionContent}>
+            <div style={styles.sourceButtons}>
+              <button
+                style={{
+                  ...styles.sourceButton,
+                  ...(sourceType === 'file' ? styles.sourceButtonActive : {}),
+                }}
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <span style={styles.sourceIcon}>FILE</span>
+              </button>
+              <button
+                style={{
+                  ...styles.sourceButton,
+                  ...(sourceType === 'microphone' ? styles.sourceButtonActive : {}),
+                }}
+                onClick={handleMicrophoneClick}
+              >
+                <span style={styles.sourceIcon}>MIC</span>
+              </button>
+              <button
+                style={{
+                  ...styles.sourceButton,
+                  ...(sourceType === 'tab' ? styles.sourceButtonActive : {}),
+                }}
+                onClick={handleTabCaptureClick}
+              >
+                <span style={styles.sourceIcon}>TAB</span>
+              </button>
+            </div>
 
-      {/* Visualizer */}
-      {sourceType !== 'none' && (
-        <>
-          <div style={styles.visualizer}>
-            <canvas ref={canvasRef} style={styles.canvas} />
-            <div
-              style={{
-                ...styles.beatIndicator,
-                ...(beat?.isBeat ? styles.beatIndicatorActive : {}),
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="audio/*"
+              style={{ display: 'none' }}
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) handleFileSelect(file);
               }}
             />
-          </div>
 
-          {/* Playback Controls (for file source) */}
-          {sourceType === 'file' && (
-            <div style={styles.controls}>
-              <button style={styles.playButton} onClick={handlePlayPause}>
-                {isPlaying ? '||' : '>'}
-              </button>
-              <div style={styles.progressBar} onClick={handleSeek}>
+            {sourceType === 'none' && (
+              <div
+                style={{
+                  ...styles.dropZone,
+                  ...(isDragging ? styles.dropZoneActive : {}),
+                }}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  setIsDragging(true);
+                }}
+                onDragLeave={() => setIsDragging(false)}
+                onDrop={handleDrop}
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <span style={{ fontSize: '20px', display: 'block', marginBottom: '6px', color: ACCENT.textDim }}>
+                  DROP AUDIO
+                </span>
+                <span style={{ color: ACCENT.textMuted, fontSize: '10px' }}>
+                  or click to browse
+                </span>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Visualizer Section */}
+      {sourceType !== 'none' && (
+        <div style={styles.section}>
+          <div
+            style={styles.sectionHeader}
+            onClick={() => toggleSection('visualizer')}
+          >
+            <span style={styles.sectionTitle}>Visualizer</span>
+            <span style={{
+              ...styles.chevron,
+              ...(sections.visualizer ? styles.chevronOpen : {}),
+            }}>▼</span>
+          </div>
+          {sections.visualizer && (
+            <div style={styles.sectionContent}>
+              <div style={styles.visualizer}>
+                <canvas ref={canvasRef} style={styles.canvas} />
                 <div
                   style={{
-                    ...styles.progressFill,
-                    width: duration ? ((currentTime / duration) * 100) + '%' : '0%',
+                    ...styles.beatIndicator,
+                    ...(beat?.isBeat ? styles.beatIndicatorActive : {}),
                   }}
                 />
               </div>
-              <span style={styles.time}>
-                {formatTime(currentTime)} / {formatTime(duration)}
-              </span>
+
+              {sourceType === 'file' && (
+                <div style={styles.controls}>
+                  <button style={styles.playButton} onClick={handlePlayPause}>
+                    {isPlaying ? '||' : '▶'}
+                  </button>
+                  <div style={styles.progressBar} onClick={handleSeek}>
+                    <div
+                      style={{
+                        ...styles.progressFill,
+                        width: duration ? ((currentTime / duration) * 100) + '%' : '0%',
+                      }}
+                    />
+                  </div>
+                  <span style={styles.time}>
+                    {formatTime(currentTime)} / {formatTime(duration)}
+                  </span>
+                </div>
+              )}
             </div>
           )}
+        </div>
+      )}
 
-          {/* Stats */}
-          <div style={styles.stats}>
-            <div style={styles.stat}>
-              <div style={styles.statValue}>{beat?.bpm || '--'}</div>
-              <div style={styles.statLabel}>BPM</div>
-            </div>
-            <div style={styles.stat}>
-              <div style={styles.statValue}>
-                {mood ? Math.round(mood.energy * 100) : '--'}%
-              </div>
-              <div style={styles.statLabel}>Energy</div>
-            </div>
-            <div style={styles.stat}>
-              <div style={styles.statValue}>
-                {bands ? Math.round(bands.bass) : '--'}
-              </div>
-              <div style={styles.statLabel}>Bass</div>
-            </div>
-            <div style={styles.stat}>
-              <div style={styles.statValue}>
-                {mood ? (mood.valence > 0.5 ? 'BRIGHT' : 'DARK') : '--'}
-              </div>
-              <div style={styles.statLabel}>Mood</div>
-            </div>
+      {/* Stats Section */}
+      {sourceType !== 'none' && (
+        <div style={{ ...styles.section, borderBottom: 'none' }}>
+          <div
+            style={styles.sectionHeader}
+            onClick={() => toggleSection('stats')}
+          >
+            <span style={styles.sectionTitle}>Stats</span>
+            <span style={{
+              ...styles.chevron,
+              ...(sections.stats ? styles.chevronOpen : {}),
+            }}>▼</span>
           </div>
-        </>
+          {sections.stats && (
+            <div style={styles.sectionContent}>
+              <div style={styles.stats}>
+                <div style={styles.stat}>
+                  <div style={styles.statValue}>{beat?.bpm || '--'}</div>
+                  <div style={styles.statLabel}>BPM</div>
+                </div>
+                <div style={styles.stat}>
+                  <div style={styles.statValue}>
+                    {mood ? Math.round(mood.energy * 100) : '--'}%
+                  </div>
+                  <div style={styles.statLabel}>Energy</div>
+                </div>
+                <div style={styles.stat}>
+                  <div style={styles.statValue}>
+                    {bands ? Math.round(bands.bass) : '--'}
+                  </div>
+                  <div style={styles.statLabel}>Bass</div>
+                </div>
+                <div style={styles.stat}>
+                  <div style={styles.statValue}>
+                    {mood ? (mood.valence > 0.5 ? 'BRT' : 'DRK') : '--'}
+                  </div>
+                  <div style={styles.statLabel}>Mood</div>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
       )}
     </div>
   );

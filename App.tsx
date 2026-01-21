@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import RockScene from './components/RockScene';
 import MaterialDemoScene from './components/MaterialDemoScene';
 import { MaterialSelector } from './src/components/MaterialSelector';
+import { AIPanel } from './src/components/AIPanel/AIPanel';
 import { useMaterial } from './src/hooks';
 import { checkWebGPUSupport } from './services/webGpuService';
 import { VERSION_SHORT } from './version';
@@ -11,7 +12,8 @@ type SceneMode = 'classic' | 'crystallum';
 const App: React.FC = () => {
   const [isWebGPUSupported, setIsWebGPUSupported] = useState<boolean | null>(null);
   const [errorMessage, setErrorMessage] = useState<string>('');
-  const [sceneMode, setSceneMode] = useState<SceneMode>('crystallum');
+  const [sceneMode, setSceneMode] = useState<SceneMode>('classic'); // Default: classic
+  const [isAIPanelOpen, setAIPanelOpen] = useState(false);
 
   // Material system hook (only used in crystallum mode)
   const materialHook = useMaterial({
@@ -48,6 +50,11 @@ const App: React.FC = () => {
       </div>
     );
   }
+
+  // Get current material name for AI panel
+  const currentMaterialName = sceneMode === 'crystallum' && materialHook.currentDefinition
+    ? materialHook.currentDefinition.name
+    : 'Classic Rock';
 
   return (
     <div className="relative w-full h-screen bg-black overflow-hidden">
@@ -96,16 +103,42 @@ const App: React.FC = () => {
             </button>
           </div>
         </div>
-        <div className="text-right">
-          <div className="flex items-center gap-2 justify-end">
-            <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
-            <span className="text-white/60 text-xs font-mono">60 FPS LOCKED</span>
+        <div className="text-right flex flex-col items-end gap-3">
+          <div>
+            <div className="flex items-center gap-2 justify-end">
+              <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
+              <span className="text-white/60 text-xs font-mono">60 FPS LOCKED</span>
+            </div>
+            <p className="text-white/30 text-[10px] font-mono mt-1">
+              {sceneMode === 'crystallum' ? 'TSL / MATERIAL SYSTEM' : 'TSL / NOISE DERIVATIVES'}
+            </p>
           </div>
-          <p className="text-white/30 text-[10px] font-mono mt-1">
-            {sceneMode === 'crystallum' ? 'TSL / MATERIAL SYSTEM' : 'TSL / NOISE DERIVATIVES'}
-          </p>
+          {/* AI Button - Visible in both modes */}
+          <button
+            onClick={() => setAIPanelOpen(true)}
+            className="pointer-events-auto relative flex items-center gap-2 px-4 py-2 rounded-xl 
+                       bg-gradient-to-br from-cyan-900/80 to-cyan-950/90 
+                       border border-cyan-500/30 text-cyan-400 text-xs font-mono
+                       hover:border-cyan-500/50 hover:shadow-lg hover:shadow-cyan-500/20
+                       transition-all backdrop-blur-lg"
+            title="AI Studio - Free AI Features"
+          >
+            <span className="text-base">🤖</span>
+            <span className="font-semibold">AI Studio</span>
+            <span className="absolute -top-1.5 -right-1.5 bg-gradient-to-r from-cyan-400 to-green-400 
+                           text-black text-[8px] font-bold px-1.5 py-0.5 rounded-sm">
+              FREE
+            </span>
+          </button>
         </div>
       </div>
+
+      {/* AI Panel Modal */}
+      <AIPanel
+        isOpen={isAIPanelOpen}
+        onClose={() => setAIPanelOpen(false)}
+        currentMaterial={currentMaterialName}
+      />
     </div>
   );
 };
