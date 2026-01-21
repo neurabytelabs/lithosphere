@@ -40,6 +40,7 @@ export const AIPanel: React.FC<AIPanelProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [isAvailable, setIsAvailable] = useState<boolean | null>(null);
   const [cooldown, setCooldown] = useState(0);
+  const [applied, setApplied] = useState(false);
 
   // Check availability on mount
   useEffect(() => {
@@ -123,8 +124,14 @@ export const AIPanel: React.FC<AIPanelProps> = ({
   const handleApply = useCallback(() => {
     if (suggestion && onApplySuggestion) {
       onApplySuggestion(suggestion);
+      setApplied(true);
+      // Auto-close after applying
+      setTimeout(() => {
+        onClose();
+        setApplied(false);
+      }, 1500);
     }
-  }, [suggestion, onApplySuggestion]);
+  }, [suggestion, onApplySuggestion, onClose]);
 
   if (!isOpen) return null;
 
@@ -243,8 +250,12 @@ export const AIPanel: React.FC<AIPanelProps> = ({
             <div className="ai-result">
               <p>{result}</p>
               {suggestion && onApplySuggestion && (
-                <button className="ai-apply-btn" onClick={handleApply}>
-                  Apply to Scene
+                <button
+                  className={`ai-apply-btn ${applied ? 'applied' : ''}`}
+                  onClick={handleApply}
+                  disabled={applied}
+                >
+                  {applied ? '✓ Applied!' : 'Apply to Scene'}
                 </button>
               )}
             </div>

@@ -1,11 +1,13 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import RockScene from './components/RockScene';
 import MaterialDemoScene from './components/MaterialDemoScene';
 import { MaterialSelector } from './src/components/MaterialSelector';
 import { AIPanel } from './src/components/AIPanel/AIPanel';
 import { useMaterial } from './src/hooks';
 import { checkWebGPUSupport } from './services/webGpuService';
+import { matchSuggestionToMaterial, applyParameterTweaks } from './services/materialMatcher';
 import { VERSION_SHORT } from './version';
+import type { MaterialSuggestion } from './services/geminiService';
 
 type SceneMode = 'classic' | 'crystallum';
 
@@ -22,6 +24,29 @@ const App: React.FC = () => {
       console.log(`[App] Material changed to: ${def.name}`);
     },
   });
+
+  // Handle AI suggestion - match to material and apply tweaks
+  const handleApplySuggestion = useCallback((suggestion: MaterialSuggestion) => {
+    console.log('[App] AI suggestion received:', suggestion.name);
+
+    // Switch to crystallum mode if not already
+    if (sceneMode !== 'crystallum') {
+      setSceneMode('crystallum');
+    }
+
+    // Find the best matching material
+    const matchedMaterialId = matchSuggestionToMaterial(suggestion);
+
+    // Select the matched material
+    materialHook.selectMaterial(matchedMaterialId);
+
+    // Apply parameter tweaks after a short delay (let material load)
+    setTimeout(() => {
+      if (materialHook.threeMaterial) {
+        applyParameterTweaks(materialHook.threeMaterial, suggestion);
+      }
+    }, 300);
+  }, [sceneMode, materialHook]);
 
   useEffect(() => {
     checkWebGPUSupport().then((supported) => {
@@ -138,6 +163,7 @@ const App: React.FC = () => {
         isOpen={isAIPanelOpen}
         onClose={() => setAIPanelOpen(false)}
         currentMaterial={currentMaterialName}
+        onApplySuggestion={handleApplySuggestion}
       />
     </div>
   );

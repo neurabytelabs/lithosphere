@@ -291,3 +291,16 @@
   0%, 100% { opacity: 1; }
   50% { opacity: 0.7; }
 }
+
+/* Applied State */
+.ai-apply-btn.applied {
+  background: rgba(0, 255, 150, 0.2);
+  border-color: rgba(0, 255, 150, 0.5);
+  color: #00ff96;
+  cursor: default;
+}
+
+.ai-apply-btn.applied:hover {
+  background: rgba(0, 255, 150, 0.2);
+  border-color: rgba(0, 255, 150, 0.5);
+}
