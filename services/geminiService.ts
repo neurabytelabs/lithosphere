@@ -14,13 +14,13 @@ const GEMINI_CONFIG = {
   rateLimitMs: 4000,
 };
 
-// Get API key from environment
+// The API key is never bundled. The user stores their own key in the browser.
 const getApiKey = (): string => {
-  const key = import.meta.env.VITE_GEMINI_API_KEY;
-  if (!key) {
-    console.warn('[GeminiService] VITE_GEMINI_API_KEY not set');
+  try {
+    return localStorage.getItem('lithosphere.geminiKey') || '';
+  } catch {
+    return '';
   }
-  return key || '';
 };
 
 // Rate limiting state
@@ -82,7 +82,7 @@ async function generateContent(prompt: string, systemPrompt?: string): Promise<G
     return { 
       text: '', 
       success: false, 
-      error: 'API key not configured. Contact administrator.' 
+      error: 'No Gemini API key set. Store your own key under localStorage lithosphere.geminiKey.' 
     };
   }
 
